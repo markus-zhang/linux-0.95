@@ -11,7 +11,7 @@ AS	=as
 LD	=ld
 LDFLAGS	=-s -x -M
 CC	=gcc $(RAMDISK)
-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer
+CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -std=gnu89 -nostdinc -I$(CURDIR)/include
 CPP	=cpp -nostdinc -Iinclude
 
 #
