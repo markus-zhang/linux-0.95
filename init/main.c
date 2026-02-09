@@ -180,7 +180,7 @@ void start_kernel(void)
 		__asm__("int $0x80"::"a" (__NR_pause):"ax");
 }
 
-static int printf(const char *fmt, ...)
+static int _printf(const char *fmt, ...)
 {
 	va_list args;
 	int i;
@@ -199,9 +199,9 @@ void init(void)
 	(void) open("/dev/tty1",O_RDWR,0);
 	(void) dup(0);
 	(void) dup(0);
-	printf("%d buffers = %d bytes buffer space\n\r",NR_BUFFERS,
+	_printf("%d buffers = %d bytes buffer space\n\r",NR_BUFFERS,
 		NR_BUFFERS*BLOCK_SIZE);
-	printf("Free mem: %d bytes\n\r",memory_end-main_memory_start);
+	_printf("Free mem: %d bytes\n\r",memory_end-main_memory_start);
 
 	execve("/bin/init",argv_init,envp_init);
 	/* if this fails, fall through to original stuff */
@@ -218,7 +218,7 @@ void init(void)
 			/* nothing */;
 	while (1) {
 		if ((pid=fork())<0) {
-			printf("Fork failed in init\r\n");
+			_printf("Fork failed in init\r\n");
 			continue;
 		}
 		if (!pid) {
@@ -232,7 +232,7 @@ void init(void)
 		while (1)
 			if (pid == wait(&i))
 				break;
-		printf("\n\rchild %d died with code %04x\n\r",pid,i);
+		_printf("\n\rchild %d died with code %04x\n\r",pid,i);
 		sync();
 	}
 	_exit(0);	/* NOTE! _exit, not exit() */
