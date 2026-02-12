@@ -11,7 +11,9 @@ AS	=as
 LD	=ld
 LDFLAGS	=-s -x -M
 CC	=gcc $(RAMDISK)
-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -std=gnu89 -nostdinc -I$(CURDIR)/include
+# Markus: use -nostdinc to prevent using system header files, use -m32 to force 32-bit code.
+# Use -fno-builtin to prevent gcc to optimize printf to puts, which is not available.
+CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fno-builtin -std=gnu89 -nostdinc -m32 -I$(CURDIR)/include
 CPP	=cpp -nostdinc -Iinclude
 
 #

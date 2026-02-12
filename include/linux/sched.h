@@ -224,23 +224,73 @@ __asm__("str %%ax\n\t" \
  * This also clears the TS-flag if the task we switched to has used
  * tha math co-processor latest.
  */
+#ifdef MARKUS_OUT
+
 #define switch_to(n) {\
-struct {long a,b;} __tmp; \
+	struct {long a,b;} __tmp; \
+	/* Markus: Use MARKUS_OUT to comment out code, but without turning them into comments, to increase readability. */ \
+	/* Markus: Explanation of the AT&T assembly code: https://gcc.gnu.org/onlinedocs/gcc-4.1.0/gcc/Extended-Asm.html */ \
+	/* cmpl %%ecx, _current -> cmpl means cmp long in AT&T, so basically comparing ecx with _current. */ \
+	/* _current is defined in kernel/sys_call.s */ \
 __asm__("cmpl %%ecx,_current\n\t" \
+	/* FIXME: je 1f -> jump to 0x1f offset (offset to what base addr ??) */ \
 	"je 1f\n\t" \
+	/* movw %%dx,%1 -> movw is mov word (2 bytes in x86), %1 is the second input, which is mem addr of __tmp.b (See input section) */ \
+	/* So this effectively initiate __tmp.b with dx, which is _TSS(n) */ \
+	/* https://stackoverflow.com/questions/33783692/what-does-the-ljmp-instruction-do-in-the-linux-kernel-fork-system-call */ \
 	"movw %%dx,%1\n\t" \
+	/* xchgl %%ecx,_current -> exchange value of ecx and _current. */ \
 	"xchgl %%ecx,_current\n\t" \
+	/* ljmp %0 -> ljmp to %0, the first input, which is __tmp.a (See input section) */ \
 	"ljmp %0\n\t" \
+	/* cmpl %%ecx,_last_task_used_math -> compare ecx with _last_task_used_math */ \
 	"cmpl %%ecx,_last_task_used_math\n\t" \
+	/* jump to 0x1f offset if not equal */ \
 	"jne 1f\n\t" \
+	/* CLTS clear the task-switched flag */ \
 	"clts\n" \
 	"1:" \
+	/* Output follows the first :, and Input follows the second : */ \
+	/* This piece of code does NOT have output as it shows. */ \
+	/* "m" probably means a memory address (to be verified with the manual) */ \
 	::"m" (*&__tmp.a),"m" (*&__tmp.b), \
+	/* "d" means the d register constraint, and "c" means the c register constraint */ \
+	/* https://gcc.gnu.org/onlinedocs/gcc-4.1.0/gcc/Machine-Constraints.html#Machine-Constraints and look for i386. */ \
+	/* In particular, note that cx is an input register. */ \
 	"d" (_TSS(n)),"c" ((long) task[n]) \
+	/* Clobber list follows the last :, so this means cx is a clobber. */ \
+	/* This contradicts with the above line where cx is also an input register, thus gcc 4.1 complains. */ \
+	/* Quote from manual: "You may not write a clobber description in a way that overlaps with an input or output operand." */ \
 	:"cx"); \
 }
 
+#else
+
+#define switch_to(n) do { \
+	long __ecx = (long) task[n]; \
+	struct {long a,b;} __tmp; \
+	__asm__ ( "cmpl %%ecx,_current\n\t" \
+			"je 1f\n\t" \
+			/* Now that we added an output section, should be %2 and %1 instead of %1 and %0 */ \
+			"movw %%dx,%2\n\t" \
+			"xchgl %%ecx,_current\n\t" \
+			"ljmp %1\n\t" \
+			"cmpl %%ecx,_last_task_used_math\n\t" \
+			"jne 1f\n\t" \
+			"clts\n" \
+			"1:" \
+			/* "+" means this operand is both read and written by the instruction. Do NOT put it into the input section. */ \
+			/* https://gcc.gnu.org/onlinedocs/gcc-4.1.0/gcc/Modifiers.html#Modifiers */ \
+			: "+c" (__ecx) \
+			: "m" (*&__tmp.a), "m" (*&__tmp.b), "d" (_TSS(n)) \
+			: "cc", "memory"); \
+} while(0)
+
+#endif
+
 #define PAGE_ALIGN(n) (((n)+0xfff)&0xfffff000)
+
+#ifdef MARKUS_OUT
 
 #define _set_base(addr,base) \
 __asm__("movw %%dx,%0\n\t" \
@@ -253,6 +303,36 @@ __asm__("movw %%dx,%0\n\t" \
 	  "d" (base) \
 	:"dx")
 
+#else
+
+/*
+	NOTE: In the following code I use a temp variable instead of base. Why?
+	Because in the original code ^, base is NOT in the output list, so base keeps its original value,
+	while its value gets copied into `edx` and gets manipulated.
+	However, in our version, note that "+d" means the variable is BOTH writable and readable,
+	which means the variable ITSELF is written back. This is NOT the original semantic.
+*/
+#define _set_base(addr,base) 					\
+unsigned long __temp = base;					\
+do {																	\
+__asm__ volatile(											\
+	"movw %%dx,%0\n\t" 									\
+	"rorl $16,%%edx\n\t"	 							\
+	"movb %%dl,%1\n\t" 									\
+	"movb %%dh,%2" 											\
+	/* All 3 "m"s are only outputs */		\
+	/* But dx is read/write */					\
+	:	"=m" (*((addr)+2)), 							\
+	  "=m" (*((addr)+4)), 							\
+	  "=m" (*((addr)+7)), 							\
+	  "+d" (__temp) 										\
+	::"cc", "memory");									\
+} while (0)
+
+#endif
+
+#ifdef MARKUS_OUT
+
 #define _set_limit(addr,limit) \
 __asm__("movw %%dx,%0\n\t" \
 	"rorl $16,%%edx\n\t" \
@@ -264,6 +344,29 @@ __asm__("movw %%dx,%0\n\t" \
 	  "m" (*((addr)+6)), \
 	  "d" (limit) \
 	:"dx")
+
+#else
+
+/*
+	NOTE: Similar to above, we need to be very careful about variables that go into BOTH output and input lists.
+	If the semantic does not alter the variable, but we need to put it into both input and output lists, use a temp variable.
+	We should also identify which variables should go into which list.
+	Analysis: (use the ^ original code for reference as the new code is to be changed)
+	TODO: Complete this tomorrow evening...
+*/
+#define _set_limit(addr,limit) \
+__asm__("movw %%dx,%0\n\t" \
+	"rorl $16,%%edx\n\t" \
+	"movb %1,%%dh\n\t" \
+	"andb $0xf0,%%dh\n\t" \
+	"orb %%dh,%%dl\n\t" \
+	"movb %%dl,%1" \
+	::"m" (*(addr)), \
+	  "m" (*((addr)+6)), \
+	  "d" (limit) \
+	:"cc", "memory")
+
+#endif
 
 #define set_base(ldt,base) _set_base( ((char *)&(ldt)) , base )
 #define set_limit(ldt,limit) _set_limit( ((char *)&(ldt)) , (limit-1)>>12 )

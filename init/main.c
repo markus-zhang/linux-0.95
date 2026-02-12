@@ -20,10 +20,20 @@
  * won't be any messing with the stack from main(), but we define
  * some others too.
  */
-static inline _syscall0(int,fork)
-static inline _syscall0(int,pause)
-static inline _syscall1(int,setup,void *,BIOS)
-static inline _syscall0(int,sync)
+
+// Markus: non-static version brought in from unistd.h by defining __LIBRARY__. 
+// While older gcc might allow static version functions following non-static version, newer versions do not.
+// I decided to rename them but still keep the same syscall number.
+// I also renamed all referenced functions in this .c file. E.g. all fork() becomes kfork() in main.c.
+#define __NR_kfork  __NR_fork
+#define __NR_kpause __NR_pause
+#define __NR_ksetup __NR_setup
+#define __NR_ksync  __NR_sync
+
+static inline _syscall0(int,kfork)
+static inline _syscall0(int,kpause)
+static inline _syscall1(int,ksetup,void *,BIOS)
+static inline _syscall0(int,ksync)
 
 #include <linux/tty.h>
 #include <linux/sched.h>
@@ -166,7 +176,7 @@ void start_kernel(void)
 	floppy_init();
 	sti();
 	move_to_user_mode();
-	if (!fork()) {		/* we count on this going ok */
+	if (!kfork()) {		/* we count on this going ok */
 		init();
 	}
 /*
@@ -177,9 +187,16 @@ void start_kernel(void)
  * task can run, and if not we return here.
  */
 	for(;;)
-		__asm__("int $0x80"::"a" (__NR_pause):"ax");
+	{
+		// __asm__("int $0x80"::"a" (__NR_pause):"ax");
+		// Markus: Previous version is confusing -- it puts syscall No. into ax ("a") but puts ax into the clobber list too.
+		// New version: clobber list is "cc", which tells gcc the asm may change the CPU condition codes (EFLAGS bits),
+		// as well as "memory", which acts as a compiler barrier for memory. This disable reordering by gcc.
+		__asm__ volatile ("int $0x80" :: "a" (__NR_pause) : "cc", "memory");
+	}
 }
 
+// Markus: I renamed printf to _printf, because it conflicts with the non-static version in a header file.
 static int _printf(const char *fmt, ...)
 {
 	va_list args;
@@ -195,7 +212,7 @@ void init(void)
 {
 	int pid,i;
 
-	setup((void *) &drive_info);
+	ksetup((void *) &drive_info);
 	(void) open("/dev/tty1",O_RDWR,0);
 	(void) dup(0);
 	(void) dup(0);
@@ -206,7 +223,7 @@ void init(void)
 	execve("/bin/init",argv_init,envp_init);
 	/* if this fails, fall through to original stuff */
 
-	if (!(pid=fork())) {
+	if (!(pid=kfork())) {
 		close(0);
 		if (open("/etc/rc",O_RDONLY,0))
 			_exit(1);
@@ -217,7 +234,7 @@ void init(void)
 		while (pid != wait(&i))
 			/* nothing */;
 	while (1) {
-		if ((pid=fork())<0) {
+		if ((pid=kfork())<0) {
 			_printf("Fork failed in init\r\n");
 			continue;
 		}
@@ -233,7 +250,7 @@ void init(void)
 			if (pid == wait(&i))
 				break;
 		_printf("\n\rchild %d died with code %04x\n\r",pid,i);
-		sync();
+		ksync();
 	}
 	_exit(0);	/* NOTE! _exit, not exit() */
 }

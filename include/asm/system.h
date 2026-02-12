@@ -19,6 +19,8 @@ __asm__ ("movl %%esp,%%eax\n\t" \
 
 #define iret() __asm__ ("iret"::)
 
+#ifdef MARKUS_OUT
+
 #define _set_gate(gate_addr,type,dpl,addr) \
 __asm__ ("movw %%dx,%%ax\n\t" \
 	"movw %0,%%dx\n\t" \
@@ -29,6 +31,35 @@ __asm__ ("movw %%dx,%%ax\n\t" \
 	"m" (*(4+(char *) (gate_addr))), \
 	"d" ((char *) (addr)),"a" (0x00080000) \
 	:"ax","dx")
+
+#else
+
+#define _set_gate(gate_addr,type,dpl,addr) do {					\
+	unsigned long __d = (unsigned long)(addr);						\
+	unsigned long __a = 0x00080000;												\
+	__asm__ (																							\
+		/* move a word (2-byte) from dx to ax */						\
+		"movw %%dx,%%ax\n\t" 																\
+		/* move a word from %4 (i) to dx */									\
+		"movw %4,%%dx\n\t" 																	\
+		/* move a long (4-byte) from eax to %0 (1st m) */		\
+		/* double % for a literal %  */											\
+		"movl %%eax,%0\n\t" 																\
+		/* move a long from edx to %1 (2nd m) */						\
+		"movl %%edx,%1" 																		\
+		/* Move two "m"s into output as they are written */ \
+		/* "=" means write-only operation */								\
+		/* Check gcc-4.1.0 online doc 5.35.3*/							\
+		: "=m" (*((unsigned long *) (gate_addr))),					\
+			"=m" (*(4+(char *) (gate_addr))),									\
+		/* Both dx and ax are input/output so "+" */				\
+			"+d" (__d),																				\
+			"+a" (__a) 																				\
+		: "i" ((short) (0x8000+(dpl<<13)+(type<<8)))  			\
+		:"cc","memory");																		\
+} while (0)
+
+#endif
 
 #define set_intr_gate(n,addr) \
 	_set_gate(&idt[n],14,0,addr)

@@ -208,8 +208,6 @@ return -1; \
 
 extern int errno;
 
-#ifndef __LIBRARY__
-
 int access(const char * filename, mode_t mode);
 int acct(const char * filename);
 int alarm(int sec);
@@ -284,5 +282,4 @@ int setgroups(int gidsetlen, gid_t *gidset);
 int select(int width, fd_set * readfds, fd_set * writefds,
 	fd_set * exceptfds, struct timeval * timeout);
 int swapon(const char * specialfile);
-#endif
 #endif
