@@ -41,8 +41,42 @@ current->start_code + current->end_code)
 
 unsigned long HIGH_MEMORY = 0;
 
+#ifdef MARKUS_OUT
+
 #define copy_page(from,to) \
 __asm__("cld ; rep ; movsl"::"S" (from),"D" (to),"c" (1024):"cx","di","si")
+
+#else
+
+/*
+	https://stackoverflow.com/questions/27804852/assembly-rep-movs-mechanism
+	Basically rep ALWAYS repeats the following string operation for ECX times, and reduces ECX for each repeat.
+	So this piece of code says:
+	- First clear direction flag, so that pointer increments for the string operation MOVSL.
+	- Then, repeat MOVSL for ECX times, and reduce ECX for each repeat. Stop when ECX is 0.
+		- In each repeat, MOVSL copies data from [ESI] to [EDI] and increments (because DF is cleared by CLD) them.
+
+	Conclusion:
+	- ECX is input/output, because the program needs to read from/write into it;
+	- Both ESI and EDI are input/output, because the program needs to read from them (addressing) and write into them (increment);
+	- Semantically, neither from nor to is modified in the program;
+*/
+#define copy_page(from,to) \
+	do {	\
+		/* Use temp variables to preserve the semantic */	\
+		unsigned long __from = (unsigned long)from;	\
+		unsigned long __to = (unsigned long)to;	\
+		/* Must use a modifiable lvalue for "+c" */	\
+		size_t n = 1024;	\
+		__asm__(	\
+			"cld ; rep ; movsl"	\
+			:	"+S" (__from), "+D" (__to), "+c" (n)	\
+			:	\
+			:	"memory"	\
+		); \
+	} while (0)
+
+#endif
 
 #define CHECK_LAST_NR	16
 

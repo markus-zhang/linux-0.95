@@ -3,7 +3,7 @@ AS	=as
 CC	=gcc
 LD	=ld
 CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer \
-	-fno-defer-pop -nostdinc -I../include
+	-fno-defer-pop -nostdinc -std=gnu89 -m32 -I../include
 CPP	=gcc -E -nostdinc -I../include
 
 .c.s:

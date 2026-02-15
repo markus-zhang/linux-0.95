@@ -312,21 +312,21 @@ __asm__("movw %%dx,%0\n\t" \
 	However, in our version, note that "+d" means the variable is BOTH writable and readable,
 	which means the variable ITSELF is written back. This is NOT the original semantic.
 */
-#define _set_base(addr,base) 					\
-unsigned long __temp = base;					\
-do {																	\
-__asm__ volatile(											\
-	"movw %%dx,%0\n\t" 									\
-	"rorl $16,%%edx\n\t"	 							\
-	"movb %%dl,%1\n\t" 									\
-	"movb %%dh,%2" 											\
-	/* All 3 "m"s are only outputs */		\
-	/* But dx is read/write */					\
-	:	"=m" (*((addr)+2)), 							\
-	  "=m" (*((addr)+4)), 							\
-	  "=m" (*((addr)+7)), 							\
-	  "+d" (__temp) 										\
-	::"cc", "memory");									\
+#define _set_base(addr,base) 						\
+do {																		\
+	unsigned long __temp = base;					\
+	__asm__ volatile(											\
+		"movw %%dx,%0\n\t" 									\
+		"rorl $16,%%edx\n\t"	 							\
+		"movb %%dl,%1\n\t" 									\
+		"movb %%dh,%2" 											\
+		/* All 3 "m"s are only outputs */		\
+		/* But dx is read/write */					\
+		:	"=m" (*((addr)+2)), 							\
+			"=m" (*((addr)+4)), 							\
+			"=m" (*((addr)+7)), 							\
+			"+d" (__temp) 										\
+		::"cc", "memory");									\
 } while (0)
 
 #endif
@@ -352,19 +352,25 @@ __asm__("movw %%dx,%0\n\t" \
 	If the semantic does not alter the variable, but we need to put it into both input and output lists, use a temp variable.
 	We should also identify which variables should go into which list.
 	Analysis: (use the ^ original code for reference as the new code is to be changed)
-	TODO: Complete this tomorrow evening...
+	- edx is on both sides, apparently, so we need a temp variable for limit. It is 4-byte so I chose unsigned long;
+	- %0 is output only. %1 is both input/output, but it is a memory address, not a reg, so no need for temp var;
+	- %0 is written into by movw, so it is 2-byte. %1 is read and written into dh by movb, so it is 1-byte.
 */
-#define _set_limit(addr,limit) \
-__asm__("movw %%dx,%0\n\t" \
-	"rorl $16,%%edx\n\t" \
-	"movb %1,%%dh\n\t" \
-	"andb $0xf0,%%dh\n\t" \
-	"orb %%dh,%%dl\n\t" \
-	"movb %%dl,%1" \
-	::"m" (*(addr)), \
-	  "m" (*((addr)+6)), \
-	  "d" (limit) \
-	:"cc", "memory")
+#define _set_limit(addr,limit) 										\
+do { 																							\
+	unsigned long __limit = (unisnged long) limit; 	\
+	__asm__( 																				\
+		"movw %%dx,%0\n\t" 														\
+		"rorl $16,%%edx\n\t" 													\
+		"movb %1,%%dh\n\t" 														\
+		"andb $0xf0,%%dh\n\t" 												\
+		"orb %%dh,%%dl\n\t" 													\
+		"movb %%dl,%1" 																\
+		:	"=m" (*(unsigned short *)(addr)), 					\
+			"+m" (*(unsigned char *)((addr)+6)), 				\
+			"+d" (limit) 																\
+	:"cc", "memory"); 															\
+} while (0)
 
 #endif
 

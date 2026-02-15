@@ -104,6 +104,8 @@ __asm__("cld\n"
 return __res;
 }
 
+#ifdef MARKUS_OUT
+
 extern inline int strncmp(const char * cs,const char * ct,size_t count)
 {
 register int __res __asm__("ax");
@@ -124,6 +126,71 @@ __asm__("cld\n"
 	:"=a" (__res):"D" (cs),"S" (ct),"c" (count):"si","di","cx");
 return __res;
 }
+
+#else
+/*
+	Definition of input/output in GCC inline asm:
+	- input: a C value the compiler must make available BEFORE THE ASM STARTS in some location (reg/mem) as the asm will use it;
+	- ouput: a C value the compiler should treat as produced AFTER THE ASM ENDS;
+
+	Observations:
+	- __res doesn't need to be a register variable;
+	- SI register is an input;
+		- input/output: lodsb (it reads and changes ESI)
+	- DI register is an input/output:
+		- input/output: scasb (it reads and changes EDI)
+	- AX register is both output:
+		- output: movl $1, %%eax
+		- No initial value required by the code, so not input
+		- No need for a temp var, as it is supposed to be changed and returned, but should be taken off the clobber list.
+	- CX register is input/output
+		- input/output: decl %3
+		- Use a temp var to preserve count, although not necessary.
+	- No scratch register
+	- Both cc and memory are clobbered
+*/
+extern inline int strncmp(const char * cs,const char * ct,size_t count)
+{
+	int __res;
+	const char * d = cs;
+	const char * s = ct;
+	size_t __count = count;
+	__asm__(
+		/* Clear directional flag */
+		"cld\n"
+		/* Decrement ECX */
+		"1:\tdecl %3\n\t"
+		/* JS (Jump if negative) to first 2: label forward */
+		"js 2f\n\t"
+		/* Load byte at address DS:(E)SI into AL. Also increments ESI by 1 afterwards. */
+		"lodsb\n\t"
+		/* Compare AL with byte at ES:(E)DI or RDI then set status flags. Also increments EDI by 1 afterwards. */
+		"scasb\n\t"
+		/* JNE to first 3: label forward (This is the branch when the compare fails) */
+		"jne 3f\n\t"
+		/* Check whether AL is 0, set ZF if AL is 0 */
+		"testb %%al,%%al\n\t"
+		/* JNE to first 1: label backward */
+		"jne 1b\n"
+		/* clear EAX, prepare to return. This is the branch when all comparisons nod. */
+		"2:\txorl %%eax,%%eax\n\t"
+		/* JMP to first 4: label forward */
+		"jmp 4f\n"
+		/* Move 1 to EAX */
+		"3:\tmovl $1,%%eax\n\t"
+		/* JL (jump if less) to first 4: label forward */
+		"jl 4f\n\t"
+		/* Negate EAX */
+		"negl %%eax\n"
+		"4:"
+		:	"=a" (__res), "+D" (d), "+S" (s), "+c" (__count)
+		:	
+		:	"cc","memory"
+	);
+	return __res;
+}
+
+#endif
 
 extern inline char * strchr(const char * s,char c)
 {
@@ -260,6 +327,8 @@ __asm__("cld\n\t" \
 return __res;
 }
 
+#ifdef MARKUS_OUT
+
 extern inline size_t strlen(const char * s)
 {
 register int __res __asm__("cx");
@@ -271,6 +340,41 @@ __asm__("cld\n\t"
 	:"=c" (__res):"D" (s),"a" (0),"0" (0xffffffff):"di");
 return __res;
 }
+
+#else
+
+extern inline size_t strlen(const char * s)
+{
+	int __res; /* No need to specify cx, "=c" (__res) picks ecx */
+	__asm__(
+		/* Clears direction flag, so that pointer increments for SCAS */
+		/* https://stackoverflow.com/questions/9636691/what-are-cld-and-std-for-in-x86-assembly-language-what-does-df-do */
+		"cld\n\t"
+		/* REPNE SCASB: Compare AL, starting at [EDI] (keep changing EDI while [EDI] != AL) */
+		/* Whether it increments or decrements EDI depends on the direction flag */
+		/* https://www.cs.uaf.edu/2017/fall/cs301/lecture/10_06_string_inst.html */
+		/* It also decrement ECX for each loop */
+		/* https://stackoverflow.com/questions/26783797/repnz-scas-assembly-instruction-specifics */
+		"repne\n\t"
+		"scasb\n\t"
+		/* 2's complement -- NOT then DEC */
+		/* Recall that ^ explains that ECX gets decremented for each loop, but ECX starts with 0xffffffff, which is negative. */
+		/* So that's why we revert it back to positive number. */
+		"notl %0\n\t"
+		"decl %0"
+		/* "=c" means ecx is the output, and __res contains the output value */
+		/* "D" (EDI) is input, which is s; But scasb also changes it for comparison, so also an output */
+		/* "a" (ax) is input, which is 0 initially */
+		/* "0" (0xffffffff) basically says, initialize %0, which is ecx to 0xffffffff, -1 in 2's complement */
+		:	"=c" (__res),
+			"+D" (s)
+		:	"a" (0),"0" (0xffffffff)
+		:	"cc", "memory"
+	);
+	return __res;
+}
+
+#endif
 
 extern char * ___strtok;
 
@@ -398,6 +502,8 @@ __asm__("cld\n\t"
 return __res;
 }
 
+#ifdef MARKUS_OUT
+
 extern inline void * memset(void * s,char c,size_t count)
 {
 __asm__("cld\n\t"
@@ -407,5 +513,39 @@ __asm__("cld\n\t"
 	:"cx","di");
 return s;
 }
+
+#else
+
+extern inline void * memset(void * s,char c,size_t count)
+{
+	/*
+		Judging from the original code:
+		- s is not modified -- i.e. the function returns that original value of s
+		- c is an ASCII character most likely, so an unsigned char is better
+	*/
+	void *__temp = s;
+	unsigned char ch = (unsigned char)c;
+
+	__asm__(
+		/* Clears direction flag, so that pointer increments for SCAS. */
+		/* https://stackoverflow.com/questions/9636691/what-are-cld-and-std-for-in-x86-assembly-language-what-does-df-do */
+		"cld\n\t"
+		/* For ECX repetitions, stores the contents of eax into [EDI], then change EDI, decrement ECX by 1 for each loop, stop when ECX is 0. */
+		/* https://stackoverflow.com/questions/3818856/what-does-the-rep-stos-x86-assembly-instruction-sequence-do */
+		/* AX is for input, EDI is for input/output, CX is for input/output */
+		"rep\n\t"
+		"stosb"
+		/* Use __temp to preserve s */
+		:	"+D" (__temp),
+			"+c" (count)
+		:	"a" (ch)
+		/* No need to clobber "cc" because none of the conditional flags is touched. */
+		:	"memory"
+	);
+	
+	return s;
+}
+
+#endif
 
 #endif

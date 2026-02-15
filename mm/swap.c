@@ -198,7 +198,11 @@ unsigned long get_free_page(void)
 {
 	unsigned long result;
 
+	unsigned long __paging_pages = PAGING_PAGES;
+	unsigned long __edi = mem_map+PAGING_PAGES-1;
+
 repeat:
+	#ifdef MARKUS_OUT
 	__asm__("std ; repne ; scasb\n\t"
 		"jne 1f\n\t"
 		"movb $1,1(%%edi)\n\t"
@@ -214,6 +218,52 @@ repeat:
 		:"0" (0),"i" (LOW_MEM),"c" (PAGING_PAGES),
 		"D" (mem_map+PAGING_PAGES-1)
 		:"di","cx","dx");
+	#else
+	/*
+		AX: 						output only;
+		"0" (0): 				initialize AX to 0;
+		"i" (LOW_MEM): 	input only;
+		CX: 						Both input and output, need a temp variable;
+		EDI: 						Both input and output
+		EDX:						Scratch register
+	*/
+	__asm__(
+		/* std: set directional flag, so that pointer decrements for SCASB */
+		/* repne scasb: https://stackoverflow.com/questions/26783797/repnz-scas-assembly-instruction-specifics */
+		/* basically repeat for ECX times: each repeat, compare AL with [EDI], then decrement EDI and ECX */
+		"std ; repne ; scasb\n\t"
+		/* Jump if not equal, to the next 1. "f" here means going forward. */
+		"jne 1f\n\t"
+		/* move 1 into [EDI+1], just one byte */
+		"movb $1,1(%%edi)\n\t"
+		/* shift left ecx (32-bit) by 12 bits */
+		/* this is to align the address to 2^12 = 4096 bytes (4KiB) boundaries */
+		"sall $12,%%ecx\n\t"
+		/* add "i" (LOW_MEM) to ecx */
+		"addl %4,%%ecx\n\t"
+		/* move ecx to edx */
+		"movl %%ecx,%%edx\n\t"
+		/* move 1024 into ecx */
+		"movl $1024,%%ecx\n\t"
+		/* move edx + 4092 into edi */
+		"leal 4092(%%edx),%%edi\n\t"
+		/* store the content of eax into [EDI], repeat for ECX times */ 
+		/* for each repeat reduce ECX by 1, and decrement EDI by 1, so that's 1024 repeats because ECX is 1024 */
+		/* I think this is to fill the page with garbage. But I don't know what EAX contains exactly... */
+		"rep ; stosl\n\t"
+		/* move edx to eax */
+		"movl %%edx,%%eax\n"
+		"1:\tcld"
+		:	"=a" (result),
+			"+c" (__paging_pages),
+			"+D" (__edi)
+		/* https://gcc.gnu.org/onlinedocs/gcc-4.1.0/gcc/Simple-Constraints.html#Simple-Constraints */
+		/* "i": An immediate integer operand. */
+		:	"0" (0),"i" (LOW_MEM)
+		/* edx is just a scratch register, not connected to anything, so it goes into the clobber list. */
+		:	"cc", "memory", "edx"
+	);
+	#endif
 	if (result >= HIGH_MEMORY)
 		goto repeat;
 	if ((result && result < LOW_MEM) || (result & 0xfff)) {
