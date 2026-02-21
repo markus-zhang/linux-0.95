@@ -711,6 +711,8 @@ extern inline size_t strspn(const char * cs, const char * ct)
 
 #endif
 
+#ifdef MARKUS_OUT
+
 extern inline size_t strcspn(const char * cs, const char * ct)
 {
 register char * __res __asm__("si");
@@ -734,6 +736,83 @@ __asm__("cld\n\t"
 	:"ax","cx","dx","di");
 return __res-cs;
 }
+
+#else
+
+/*
+	Scans cs for the first occurrence of any of the characters that are part of ct, 
+	returning the number of characters of str1 read before this first occurrence.
+
+	Observations:
+	- Keep the "=S" and "0" combo, make sure "0" still points to "=S" after my modifications.
+	- ECX initiated with a temp variable __c,
+		- and is changed in the routine, \
+		- so we give it a "+".
+	- cs should NOT be disturbed, so I added a temp var.
+	- On the other hand, __res is supposed to be written into, so everything is good.
+	- EAX is read/write, should get a "+". 
+		- The first SCASB requires it to be initiated, which means it is an input.
+		- The LODSB writes into it.
+	- The asm routine does not require initialization of EDI, but it does change it, so goes into clobber list.
+
+	You see that if a C value is an input, and is changed, then it needs a "+";
+	On the other hand, if it is NOT an input, and is changed, then it goes into the clobber list.
+*/
+
+extern inline size_t strcspn(const char * cs, const char * ct)
+{
+	char * __res;
+	size_t __c = 0xFFFFFFFF;
+	unsigned int __a = 0;
+	const char* __cs = cs;
+
+
+	__asm__(
+		/* Clear DF. Subsequent string instructions increment EDI/ESI. */
+		"cld\n\t"
+		/* Move ct into EDI. */
+		"movl %4,%%edi\n\t"
+		/* Repeat SCASB for ECX times, decrement ECX for each repeat, until ECX = 0 or ZF = 1. */
+		/* SCASB compares AL (0) with byte at (E)DI and set SF or ZF accordingly. Increment EDI afterwards. */
+		/* Once reaches the terminating char, ZF = 1, and repne ends. */
+		"repne\n\t"
+		"scasb\n\t"
+		/* 2's complement. This is to find strlen(ct). */
+		"notl %%ecx\n\t"
+		"decl %%ecx\n\t"
+		/* Save ct's length to EDX. */
+		"movl %%ecx,%%edx\n"
+		/* Load byte at (E)SI (cs) into AL. Increment ESI afterwards. */
+		"1:\tlodsb\n\t"
+		/* Check if *cs is '\0'. */
+		"testb %%al,%%al\n\t"
+		/* If yes, we have reached the terminating char, jump forward to label 2:. */
+		"je 2f\n\t"
+		/* If no, move ct to EDI. */
+		"movl %4,%%edi\n\t"
+		/* Move ct's length to ECX. */
+		"movl %%edx,%%ecx\n\t"
+		/* Repeat SCASB for ECX times, decrement ECX for each repeat, until ECX = 0 or ZF = 1. */
+		/* SCASB compares AL (*cs) with byte at (E)DI (*ct) and set SF or ZF accordingly. Increment EDI afterwards. */
+		/* Once *cs == *ct, ZF = 1, and repne ends. */
+		"repne\n\t"
+		"scasb\n\t"
+		/* Jump backwards to label 1: if ZF = 0. This is the case when REPNE stops because ECX = 0. */
+		/* After the jump LODSB picks the next *cs and repeat the ^ process. */
+		"jne 1b\n"
+		/* Decrement __res because LODSB auto-increment ESI. */
+		"2:\tdecl %0"
+		:	"=S" (__res), "+a" (__a), "+c" (__c)
+		:	"0" (__cs),"g" (ct)
+		:	"dx","di", "cc", "memory"
+	);
+
+	return __res-cs;
+}
+
+#endif
+
+#ifdef MARKUS_OUT
 
 extern inline char * strpbrk(const char * cs,const char * ct)
 {
@@ -762,6 +841,92 @@ __asm__("cld\n\t"
 return __res;
 }
 
+#else
+
+/*
+	char *strpbrk(const char *s, const char *accept);
+	The strpbrk() function locates the first occurrence in the string s of any of the bytes in the string accept.
+
+	Observations:
+	- Gotta keep "=S" and "0" -- no need to beat the boat.
+	- Put temp vars for 0x0 and 0xFFFFFFFF.
+	- AX is read/write (first SCASB requires it to be initialized, and some other instructions write into it.). Use "+a".
+	- CX is read/write (first REPNE requites it to be initialized, and it also writes into it). Use "+c".
+	- DX is scratch. It's fine to keep it in the clobber list.
+	- EDI doesn't need to be initialized (movl initiates it). 
+
+	To calrify it again (just in case this is the first routine you read about):
+	- If the asm routine requires a reg to be initialized, then it's an input.
+	- If the reg is written into by the asm routine, then it's an output.
+	- If the reg is both an input/output, it MUST use "+". (Exception: "=S" with "0" is a special case that is allowed. )
+		- Damn it this is so cursed.
+	- If the reg is ONLY output, like a scratch register, and is not linked to a variable, then it can stay in the clobber list.
+		- It cannot use "=" because it doesn't have a linked var, so nothing in ().
+	- If the reg is ONLY output, but linked to a variable (like __res), then it must use "=".
+*/
+
+extern inline char * strpbrk(const char * cs,const char * ct)
+{
+	char * __res;
+	const char* __cs = cs;
+	const char* __ct = ct;
+	unsigned long __c = 0xFFFFFFFF;
+	unsigned int __a = 0x0;
+
+	__asm__(
+		/* Clear DF. Subsequent string instructions increment ESI/EDI. */
+		"cld\n\t"
+		/* Move ct into EDI. */
+		"movl %4,%%edi\n\t"
+		/* Repeat SCASB for ECX times. Reduce ECX for each repeat. Break if ECX is 0 or if ZF = 1. */
+		/* SCASB compare AL with byte at (E)DI. Set ZF and SF accordingly. Increment EDI afterwards as DF is cleared. */
+		/* This is to compare 0 with *ct as AL is initialized to 0 and EDI contains ct. */
+		/* The decrement of ECX = ct's length, including the terminating char. */
+		"repne\n\t"
+		"scasb\n\t"
+		/* ECX now contains ct's length + 1 */ 
+		"notl %%ecx\n\t"
+		"decl %%ecx\n\t"
+		/* Duplicate ECX to EDX. EDX now contains ct's length + 1 */
+		"movl %%ecx,%%edx\n"
+		/* Load byte at (E)SI into AL. Increment ESI afterwwards as DF is cleared. */
+		/* Note that ESI is initialized to cs. */
+		"1:\tlodsb\n\t"
+		/* Is AL (*cs) 0? */
+		"testb %%al,%%al\n\t"
+		/* If yes we have hit the terminating char of cs. Jump forward to label 2:. */
+		"je 2f\n\t"
+		/* Move ct into EDI again. This is the original value of ct BTW. */
+		"movl %4,%%edi\n\t"
+		/* Move length back to ecx. */
+		"movl %%edx,%%ecx\n\t"
+		/* Repeat SCASB for ECX times. Reduce ECX for each repeat. Break if ECX is 0 or if ZF = 1. */
+		/* SCASB compare AL with byte at (E)DI. Set ZF and SF accordingly. Increment EDI afterwards as DF is cleared. */
+		/* This is to compare *cs with *ct as AL is now *cs and EDI contains ct. It's going to repeat. */
+		"repne\n\t"
+		"scasb\n\t"
+		/* If REPNE ends with ECX == 0, not ZF = 1, this means we go through the whole string without finding a match. */
+		"jne 1b\n\t"
+		/* We found a match. Decrement __res as SCASB auto-increments it. */
+		/* __res contains the address of the matching char. */
+		"decl %0\n\t"
+		/* Jump forward to label 3: to return. */
+		"jmp 3f\n"
+		/* No match at all, returns -1 */
+		"2:\txorl %0,%0\n"
+		"3:"
+		:	"=S" (__res), "+a" (__a), "+c" (__c)
+		:	"0" (cs),"g" (ct)
+		:	"cc","memory","dx","di"
+	);
+
+	return __res;
+}
+
+#endif
+
+#ifdef MARKUS_OUT
+
 extern inline char * strstr(const char * cs,const char * ct)
 {
 register char * __res __asm__("ax");
@@ -788,6 +953,81 @@ __asm__("cld\n\t" \
 	:"cx","dx","di","si");
 return __res;
 }
+
+#else
+
+/*
+	char *strstr(const char *haystack, const char *needle);
+	The strstr() function finds the first occurrence of the substring needle in the string haystack. 
+	The terminating null bytes (aq\0aq) are not compared.
+	The function returns a pointer to the beginning of the substring, or NULL if the substring is not found. 
+
+	Observations:
+	- EDI can be put into clobber list.
+		- It doesn't require an initial value, and it is changed frequently.
+	- ESI is input/output.
+		- "movl %%esi,%%eax\n\t" requires an initial value.
+		- It is changed frequently.
+	- "cc" and "memory" in clobber list for sure.
+	- Leave "=a" and "0" alone. Don't beat the boat...
+	- Temp var for everything else.
+*/
+
+extern inline char * strstr(const char * cs,const char * ct)
+{
+	char * __res;
+	const char* __cs = cs;
+	const char* __ct = ct;
+	unsigned long __c = 0xFFFFFFFF;
+	
+	__asm__(
+		/* Clear DF. Subsequent string instructions increment ESI/EDI. */
+		"cld\n\t" \
+		/* Move ct (address of string) into EDI. */
+		"movl %4,%%edi\n\t"
+		/* Repeat SCASB for ECX times. Decrement ECX for each repeat. Break if ECX == 1 or ZF == 1. */
+		/* SCASB compares AL with one byte at (E)DI. Essentially compares 0 with *ct. This is to find ct length. */
+		"repne\n\t"
+		"scasb\n\t"
+		/* Get ct length, including the terminating char, by calculating the 2's complement of ECX, a negative number. */
+		"notl %%ecx\n\t"
+		/* Decrement ECX because strstr() doesn't compare the terminating char. */
+		"decl %%ecx\n\t"	/* PLEASE NOTE! This also sets Z if searchstring='' */
+		/* Backup ct length (without terminating char) in EDX. */
+		"movl %%ecx,%%edx\n"
+		/* Move ct (address of string) into EDI again. */
+		"1:\tmovl %4,%%edi\n\t"
+		/* Move cs (address of string) into EAX. */
+		"movl %%esi,%%eax\n\t"
+		/* Backup ct length in ECX. */
+		"movl %%edx,%%ecx\n\t"
+		/* REPE CMPS m8, m8 -> Find nonmatching bytes in ES:[(E)DI] and DS:[(E)SI]. */
+		/* REPE stops when ECX == 0 or ZF == 0. That is, immediately stops if the chars are not matching. */
+		"repe\n\t"
+		"cmpsb\n\t"
+		/* If ZF == 1 this means we actually matched every one of them. Jump forward to label 2: to return. */
+		"je 2f\n\t"		/* also works for empty string, see above */
+		/* This is the case that not every char matches. */
+		/* Exchange EAX (which holds address of the string cs) with ESI (should point to the first unmatched char) */
+		"xchgl %%eax,%%esi\n\t"
+		/* Increment ESI (now holds address of the string ct + 1), pointing to the next char in ct. */
+		"incl %%esi\n\t"
+		/* Compare 0 with byte at EAX-1 (EAX-1 points to the last matched char?) */
+		"cmpb $0,-1(%%eax)\n\t"
+		/* If not equal, jump back to label 1:. This is to compare the next char in ct with cs string. */
+		"jne 1b\n\t"
+		/* If equal, prepare to return NULL. */
+		"xorl %%eax,%%eax\n\t"
+		"2:"
+		:	"=a" (__res), "+c" (__c), "+S" (__cs)
+		:	"0" (0), "g" (__ct)
+		:	"cc", "memory", "dx", "di"
+	);
+	
+	return __res;
+}
+
+#endif
 
 #ifdef MARKUS_OUT
 
@@ -839,6 +1079,8 @@ extern inline size_t strlen(const char * s)
 #endif
 
 extern char * ___strtok;
+
+#ifdef MARKUS_OUT
 
 extern inline char * strtok(char * s,const char * ct)
 {
@@ -904,6 +1146,152 @@ __asm__("testl %1,%1\n\t"
 return __res;
 }
 
+#else
+
+/*
+	char *strtok(char *str, const char *delim);
+	The strtok() function parses a string into a sequence of tokens. 
+	On the first call to strtok() the string to be parsed should be specified in str. 
+	In each subsequent call that should parse the same string, str should be NULL. 
+
+	Observations:
+	- Keep the format of the first two variables. "=S" and "=b" with their respective "0" and "1" is fine.
+	- "cc" and "memory" in clobber list for sure.
+	- EAX: No initial value required, but frequently written over, so keep it in the clobber list.
+	- ECX: No initial value required, but frequently written over, so keep it in the clobber list.
+	- EDX: No initial value required, but frequently written over, so keep it in the clobber list.
+	- EDI: No initial value required, but frequently written over, so keep it in the clobber list.
+	- Added temp var for ct and s.
+*/
+
+extern inline char * strtok(char * s,const char * ct)
+{
+	char * __res;
+	char* __s = s;
+	const char* __ct = ct;
+
+	__asm__(
+		/* Check whether __strtok is 0. */
+		"testl %1,%1\n\t"
+		/* If not zero, jump forward to label 1:. */
+		"jne 1f\n\t"
+		/* Check whether __res is 0. */
+		"testl %0,%0\n\t"
+		/* If __res is 0, jump forward to label 8:. */
+		"je 8f\n\t"
+		/* If __res is not 0, copy the value of __res into __strtok. */
+		"movl %0,%1\n"
+
+		/* (Branch where __strtok is not 0) */
+		/* Set __res to 0. */
+		"1:\txorl %0,%0\n\t"
+		/* Put 0xFFFFFFFF into ECX, as a counter. See below. */
+		"movl $-1,%%ecx\n\t"
+		/* Set EAX to 0. AL is to be compared with a string. See below. */
+		"xorl %%eax,%%eax\n\t"
+		/* Clear DF. Subsequent string instructions increment EDI/ESI. */
+		"cld\n\t"
+		/* Move ct into EDI. ct is the delimiter. */
+		"movl %4,%%edi\n\t"
+		/* Repeat SCASB ECX times. Stop if ECX == 0 (exhausted) or ZF == 1 (matched). Decrement ECX after each repeat. */
+		/* SCASB compares AL (0) with one byte at (E)DI. Modify ZF or SF accordingly. Increment EDI as DF is cleared. */
+		"repne\n\t"
+		"scasb\n\t"
+		/* ECX = 2's complement of ECX */
+		"notl %%ecx\n\t"
+		"decl %%ecx\n\t"
+		/* If ZF == 1, jump forward to label 7:. */
+		"je 7f\n\t"			/* empty delimeter-string */
+		/* Copy ECX (string length including '\0' of ct) into EDX. */
+		"movl %%ecx,%%edx\n"
+		/* Load one byte at (E)SI (*___strtok) into AL. Increment ESI as DF is cleared. */
+		"2:\tlodsb\n\t"
+		/* Check if AL is 0. */
+		"testb %%al,%%al\n\t"
+		/* If it is 0, jump forward to label 7:. */
+		"je 7f\n\t"
+		/* (If it is not 0) Move ct into EDI again. */
+		"movl %4,%%edi\n\t"
+		/* Copy string length of ct (including terminating char) back into ECX. */
+		"movl %%edx,%%ecx\n\t"
+		/* Repeat SCASB ECX times. Stop if ECX == 0 (exhausted) or ZF == 1 (matched). Decrement ECX after each repeat. */
+		/* SCASB compares AL (one byte at *___strtok) with one byte at (E)DI (*ct). Modify ZF or SF accordingly. Increment EDI. */
+		"repne\n\t"
+		"scasb\n\t"
+		/* If ZF == 1 (matched) then jump backward to label 2: to load the next char from ___strtok. */
+		"je 2b\n\t"
+		/* decrement ___strtok. (Why decrement???) */
+		"decl %1\n\t"
+		/* Check if *___strtok is '\0'. */
+		"cmpb $0,(%1)\n\t"
+		/* If it is 0, jump forward to label 7:. */
+		"je 7f\n\t"
+		/* Move the decremented __strtok to __res. */
+		"movl %1,%0\n"
+		/* Load one byte at (E)SI into AL. Increment ESI afterwards, as DF is cleared. */
+		"3:\tlodsb\n\t"
+		/* Check if AL (*__strtok) is 0. */
+		"testb %%al,%%al\n\t"
+		/* If it is 0, jump forward to label 5:. */
+		"je 5f\n\t"
+		/* Move ct into EDI. */
+		"movl %4,%%edi\n\t"
+		/* Copy ct string length into ECX. ECX was modified by REPNE ^. */
+		"movl %%edx,%%ecx\n\t"
+		/* Repeat SCASB ECX times. Stop if ECX == 0 (exhausted) or ZF == 1 (matched). Decrement ECX after each repeat. */
+		/* SCASB compares AL (one byte at *___strtok) with one byte at (E)DI (*ct). Modify ZF or SF accordingly. Increment EDI. */
+		"repne\n\t"
+		"scasb\n\t"
+		/* If ECX == 0 (exhausted) ^, jump backwards to label 3:. */
+		"jne 3b\n\t"
+		/* (This is the ZF == 1 (matched) ^ branch) Decrement __strstok. (Why decrement???) */
+		"decl %1\n\t"
+		/* Check if *___strtok is '\0'. */
+		"cmpb $0,(%1)\n\t"
+		/* If it is 0, jump forward to label 5:. */
+		"je 5f\n\t"
+
+		/* I think this is where we get all the substring. */
+		/* Move 0 into *__strtok for the terminating char. Note that __strtok (ESI) is auto-incremented after the last SCASB. */
+		"movb $0,(%1)\n\t"
+		/* Increment __strtok. Why??? */
+		"incl %1\n\t"
+		/* Jump forward to label 6:. */
+		"jmp 6f\n"
+
+		/* Clear __strtok. Why??? */
+		"5:\txorl %1,%1\n"
+		/* Compare 0 with *__res. */
+		"6:\tcmpb $0,(%0)\n\t"
+		/* If it is not 0, jump backwards to label 7:. */
+		"jne 7f\n\t"
+
+		/* Clear __res. */
+		"xorl %0,%0\n"
+		/* Check if __res is 0. Why??? We just cleared it? */
+		"7:\ttestl %0,%0\n\t"
+		/* If not 0, jump forward to label 8:. */
+		"jne 8f\n\t"
+		/* Move __res into __strtok. I think this is to prepare for the next iteration of strtok()? */
+		"movl %0,%1\n"
+		"8:"
+	#if __GNUC__ == 2
+		:"=r" (__res)
+	#else
+		:"=b" (__res)
+	#endif
+		,	"=S" (___strtok)
+		:	"0" (___strtok),"1" (__s),"g" (__ct)
+		:	"ax","cx","dx","di", "cc", "memory"
+	);
+
+	return __res;
+}
+
+#endif
+
+#ifdef MARKUS_OUT
+
 extern inline void * memcpy(void * dest,const void * src, size_t n)
 {
 __asm__("cld\n\t"
@@ -913,6 +1301,40 @@ __asm__("cld\n\t"
 	:"cx","si","di");
 return dest;
 }
+
+#else
+
+/*
+	Simple memcpy implementation. Copy n bytes.
+
+	Observations:
+	- ECX is input/output, requires a "+".
+	- Both ESI and EDI require initialization, and dest needs to keep its original value, but I'll give both of them temp vars anyway.
+	- "memory" in clobber list, cld also impacts "cc".
+*/
+
+extern inline void * memcpy(void * dest,const void * src, size_t n)
+{
+	void *__dest = dest;
+	const void* __src = src;
+	__asm__(
+		/* Clear DF. Subsequent string instructions increment EDI/ESI. */
+		"cld\n\t"
+		/* Repeat MOVSB for ECX times. Stop when ECX is 0. */
+		/* MOVSB moves byte from address DS:(E)SI to ES:(E)DI.  */
+		"rep\n\t"
+		"movsb"
+		:	"+c" (n), "+S" (__src), "+D" (__dest)
+		:
+		:	"cc", "memory"
+	);
+
+	return dest;
+}
+
+#endif
+
+#ifdef MARKUS_OUT
 
 extern inline void * memmove(void * dest,const void * src, size_t n)
 {
@@ -932,6 +1354,63 @@ __asm__("std\n\t"
 return dest;
 }
 
+#else
+
+/*
+	void *memmove(size_t n; void dest[n], const void src[n], size_t n);
+	The memmove() function copies n bytes from memory area src to memory area dest. 
+	The memory areas may overlap: 
+		copying takes place as though the bytes in src are first copied into a temporary array that does not overlap src or dest, 
+		and the bytes are then copied from the temporary array to dest.
+
+	Observations:
+	- Temp variables for dest and src.
+	- Temp variables for the second set of dest and src.
+	- "cc", "memory" in clobber list.
+
+	ChatGPT wisely suggested to check for edge cases, which I should think of.
+
+*/
+
+extern inline void * memmove(void * dest,const void * src, size_t n)
+{
+	char *d = (char *)dest;
+	char *__d = ((char *)dest) + n - 1;
+	const char *s = (const char *)src;
+	const char *__s = ((const char *)src) + n - 1;
+
+	if (dest == src | n == 0)
+	{
+		return dest;
+	}
+
+	if (dest<src)
+		__asm__(
+			"cld\n\t"
+			"rep\n\t"
+			"movsb"
+			:	"+c" (n), "+S" (s), "+D" (d)
+			:
+			:	"cc", "memory"
+		);
+	else
+		__asm__(
+			"std\n\t"
+			"rep\n\t"
+			"movsb\n\t"
+			"cld"
+			:	"+c" (n), "+S" (__s), "+D" (__d)
+			:
+			:	"cc", "memory"
+		);
+
+	return dest;
+}
+
+#endif
+
+#ifdef MARKUS_OUT
+
 extern inline int memcmp(const void * cs,const void * ct,size_t count)
 {
 register int __res __asm__("ax");
@@ -947,6 +1426,57 @@ __asm__("cld\n\t"
 	:"si","di","cx");
 return __res;
 }
+
+#else
+
+/*
+	The memcmp() function returns an integer less than, equal to, or greater than zero if the first n bytes of s1 is found,
+  respectively, to be less than, to match, or be greater than the first n bytes of s2.
+
+	Observations:
+	- ECX requires an initial value, and it gets changed frequently. Use "+".
+	- Keep "=a" and "0" combo, and make sure "=a" is the first one in the list.
+	- Both ESI and EDI require initial values, and they get changed frequently. Use "+" for both.
+	- "cc" and "memory" in clobber list.
+
+	Darn it I forgot about edge cases again.
+*/
+
+extern inline int memcmp(const void * cs,const void * ct,size_t count)
+{
+	int __res;
+
+	if (count == 0 || cs == ct)
+		return 0;
+
+	__asm__(
+		/* Clear DF. Subsequent string instructions increment EDI/ESI. */
+		"cld\n\t"
+		/* Repeat CMPSB ECX times. Stop if ZF == 0 or ECX == 0. Decrement ECX by each repeat. */
+		/* CMPSB compares (E)SI with (E)DI, and set ZF/SF accordingly. It increments both registers afterwards as DF is cleared. */
+		"repe\n\t"
+		"cmpsb\n\t"
+		/* If ZF == 0 (nothing matches), jump forward to label 1:. */
+		"je 1f\n\t"
+
+		/* Set EAX to 1. */
+		"movl $1,%%eax\n\t"
+		/* (depending on previous CMPSB), jump forward to label 1: if SF is set (negative). */
+		"jl 1f\n\t"
+		/* Negate EAX. 2's complement. */
+		"negl %%eax\n"
+
+		/* If SF is set (ESI < EDI), i.e. *ct < *cs. then return 1, if ESI > EDI, return -1, otherwise return 0. */
+		"1:"
+		:	"=a" (__res), "+c" (count), "+D" (cs), "+S" (ct)
+		:	"0" (0)
+		:	"cc", "memory"
+	);
+
+	return __res;
+}
+
+#endif
 
 extern inline void * memchr(const void * cs,char c,size_t count)
 {
