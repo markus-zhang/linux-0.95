@@ -18,6 +18,7 @@
  * invalidate changed floppy-disk-caches.
  */
 
+#include <linux/fs.h>
 #include <stdarg.h>
  
 #include <linux/config.h>
@@ -325,12 +326,41 @@ struct buffer_head * bread(int dev,int block)
 	return NULL;
 }
 
+#ifdef MARKUS_OUT
+
 #define COPYBLK(from,to) \
 __asm__("cld\n\t" \
 	"rep\n\t" \
 	"movsl\n\t" \
 	::"c" (BLOCK_SIZE/4),"S" (from),"D" (to) \
 	:"cx","di","si")
+
+#else
+
+/*
+	Observations:
+	- Both ESI and EDI require initial values and are changed frequently. Use "+".
+	- ECX requires initial value and is decremented. Use "+".
+	- "memory" in clobber.
+*/
+
+#define COPYBLK(from,to) \
+do { \	
+	size_t __c = BLOCK_SIZE / 4; \
+	__asm__( \
+		/* Clear DF. Subsequent string instructions increment ESI/EDI. */ \
+		"cld\n\t" \
+		/* Repeat movsl ECX times. Stop when ECX == 0. Decrement ECX for each repeat. */ \
+		/* Move Long at address DS:(E)SI to address ES:(E)DI. */ \
+		"rep\n\t" \
+		"movsl\n\t" \
+		:	"+S" (from), "+D" (to), "+c" (__c) \
+		:	\
+		:	"cc", "memory" \
+	); \
+} while (0)
+
+#endif
 
 /*
  * bread_page reads four buffers into memory at the desired address. It's

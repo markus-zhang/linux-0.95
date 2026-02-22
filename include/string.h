@@ -855,7 +855,7 @@ return __res;
 	- DX is scratch. It's fine to keep it in the clobber list.
 	- EDI doesn't need to be initialized (movl initiates it). 
 
-	To calrify it again (just in case this is the first routine you read about):
+	To clarify it again (just in case this is the first routine you read about):
 	- If the asm routine requires a reg to be initialized, then it's an input.
 	- If the reg is written into by the asm routine, then it's an output.
 	- If the reg is both an input/output, it MUST use "+". (Exception: "=S" with "0" is a special case that is allowed. )
@@ -1478,6 +1478,8 @@ extern inline int memcmp(const void * cs,const void * ct,size_t count)
 
 #endif
 
+#ifdef MARKUS_OUT
+
 extern inline void * memchr(const void * cs,char c,size_t count)
 {
 register void * __res __asm__("di");
@@ -1493,6 +1495,51 @@ __asm__("cld\n\t"
 	:"cx");
 return __res;
 }
+
+#else
+
+/*
+	The memchr() function scans the initial n bytes of the memory area pointed to by s for the first instance of c.
+	The memchr() function return a pointer to the matching byte or NULL if the character does not occur in the given memory area.
+
+	Observations:
+	- "cc" and "memory" in clobber list.
+	- ECX requires initial value, and it is changed frequently, so "+".
+	- EAX requires initial value, but it doesn't get changed. So keep it in the input list.
+	- EDI is read/write, so I assign cs to d, and then gives d to "+D". d is supposed to retain the changes made in the asm routine.
+*/
+
+extern inline void * memchr(const void * cs,char c,size_t count)
+{
+	const char* d = (const char*)cs;
+
+	if (count == 0 || cs == 0)
+		return NULL;
+
+	__asm__(
+		/* Clear FD. Subsequent string instructions increment EDI/ESI. */
+		"cld\n\t"
+		/* Repeat SCASB ECX times. Stop when ECX == 0 (exhausted) or ZF == 1 (matched). Decrement ECX for each repeat. */
+		/* SCASB compares AL with one byte at (E)DI. Set ZF/SF accordingly. Increment EDI afterwards as DF is cleared.  */
+		"repne\n\t"
+		"scasb\n\t"
+		/* (Found a match) If ZF == 1 then jump forward to label 1:. */
+		"je 1f\n\t"
+
+		/* (Exhausted) ECX == 0. Set __res to 1. This is to set __res to 0 after the next instruction. */
+		"movl $1,%0\n"
+		/* Decrement __res. If SCASB found a match, this sets __res to point to the matching char.  */
+		/* If SCASB did not find a match, this sets __res to 0. */
+		"1:\tdecl %0"
+		:	"+D" (d), "+c" (count)
+		:	"a" (c)
+		:	"cc", "memory"
+	);
+
+	return (void *)d;
+}
+
+#endif
 
 #ifdef MARKUS_OUT
 

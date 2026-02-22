@@ -1,0 +1,23 @@
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "host",
+      "compilerPath": "/usr/bin/gcc",
+      "intelliSenseMode": "linux-gcc-x86",
+      "cStandard": "gnu11",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "${workspaceFolder}/include",
+        "${workspaceFolder}/arch/**/include",
+        "${workspaceFolder}/include/uapi",
+        "${workspaceFolder}/arch/**/include/uapi",
+        "${workspaceFolder}/include/generated",
+        "${workspaceFolder}/arch/**/include/generated"
+      ],
+      "defines": [
+        "__KERNEL__"
+      ]
+    }
+  ]
+}

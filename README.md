@@ -902,9 +902,10 @@ Take `ax (__res)` as an example. In the code, `ax` is indeed read (both `testb` 
 
 ```C
 /*
-	Definition of input/output in GCC inline asm:
+	Definition of input/output/clobber in GCC inline asm:
 	- input: a C value the compiler must make available BEFORE THE ASM STARTS in some location (reg/mem) as the asm will use it;
 	- ouput: a C value the compiler should treat as produced AFTER THE ASM ENDS;
+	- clobber: things the routine writes into, but don't expose as outputs;
 
 	Observations:
 	- __res doesn't need to be a register variable;
@@ -962,4 +963,130 @@ extern inline int strncmp(const char * cs,const char * ct,size_t count)
 	);
 	return __res;
 }
+```
+
+
+**Error 16**:
+
+Again, this is not exactly an error, but I decided to proactively transform all inline assembly code left in `string.h` to a modern format -- i.e. can be compiled by GCC 4.1. I'll start with `strcpy()`.
+
+```C
+// strcpy()
+// I can imagine that the C code looks like this:
+/*
+char *strcpy(char *dest, const char *src)
+{
+	for (; dest++, src++; dest != 0)
+	{
+		*src = *dest;
+	}
+}
+*/
+
+extern inline char * strcpy(char * dest,const char *src)
+{
+__asm__("cld\n"
+	"1:\tlodsb\n\t"
+	"stosb\n\t"
+	"testb %%al,%%al\n\t"
+	"jne 1b"
+	::"S" (src),"D" (dest):"si","di","ax");
+return dest;
+}
+```
+
+**Error 17**:
+
+I then changed everything in `string.h`. There is a lot of change so I'll list the most interesting ones here.
+
+First, don't forget to check for edge case. Sometimes a string comparison algorithm compares string a with string b, for n bytes. I need to make sure that edge cases such as `n = 0` and `cs = ct` are taken care of. `memmove()` is such an example.
+
+```C
+extern inline void * memmove(void * dest,const void * src, size_t n)
+{
+	char *d = (char *)dest;
+	char *__d = ((char *)dest) + n - 1;
+	const char *s = (const char *)src;
+	const char *__s = ((const char *)src) + n - 1;
+
+	if (dest == src | n == 0)
+	{
+		return dest;
+	}
+
+	if (dest<src)
+		__asm__(
+			"cld\n\t"
+			"rep\n\t"
+			"movsb"
+			:	"+c" (n), "+S" (s), "+D" (d)
+			:
+			:	"cc", "memory"
+		);
+	else
+		__asm__(
+			"std\n\t"
+			"rep\n\t"
+			"movsb\n\t"
+			"cld"
+			:	"+c" (n), "+S" (__s), "+D" (__d)
+			:
+			:	"cc", "memory"
+		);
+
+	return dest;
+}
+```
+
+Also, to clarify the general rules again (just in case this is the first routine you read about):
+- If the asm routine requires a reg to be initialized, then it's an input.
+- If the reg is written into by the asm routine, then it's an output.
+- If the reg is both an input/output, it MUST use "+". (Exception: "=S" with "0" is a special case that is allowed. )
+	- Damn it this is so cursed.
+- If the reg is ONLY output, like a scratch register, and is not linked to a variable, then it can stay in the clobber list.
+	- It cannot use "=" because it doesn't have a linked var, so nothing in ().
+- If the reg is ONLY output, but linked to a variable (like `__res`), then it must use "=".
+
+
+
+**Error 18**:
+
+In `buffer.c`, there is a macro called `COPYBLK`. It is a relatively simple one, so I'll copy paste the original code and the modified code so that you can check the difference. I never removed original code from the repo, but using a macro to route to my own version, so you can also check the repo.
+
+Original: You know what, I really hate inline assembly wrapped with C macro.
+
+```C
+#define COPYBLK(from,to) \
+__asm__("cld\n\t" \
+	"rep\n\t" \
+	"movsl\n\t" \
+	::"c" (BLOCK_SIZE/4),"S" (from),"D" (to) \
+	:"cx","di","si")
+```
+
+Modification: The only important issue, is that any **output** value inside of `()` must be a lvalue. So I can't say `"+c" (BLOCK_SIEZE/4)`. Instead, I need to introduce a temp variable to contain that value.
+
+```C
+/*
+	Observations:
+	- Both ESI and EDI require initial values and are changed frequently. Use "+".
+	- ECX requires initial value and is decremented. Use "+".
+	- "memory" in clobber.
+*/
+
+#define COPYBLK(from,to) \
+do { \	
+	size_t __c = BLOCK_SIZE / 4; \
+	__asm__( \
+		/* Clear DF. Subsequent string instructions increment ESI/EDI. */ \
+		"cld\n\t" \
+		/* Repeat movsl ECX times. Stop when ECX == 0. Decrement ECX for each repeat. */ \
+		/* Move Long at address DS:(E)SI to address ES:(E)DI. */ \
+		"rep\n\t" \
+		"movsl\n\t" \
+		:	"+S" (from), "+D" (to), "+c" (__c) \
+		:	\
+		:	"cc", "memory" \
+	); \
+} while (0)
 ```
