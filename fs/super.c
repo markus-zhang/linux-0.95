@@ -30,10 +30,31 @@ __res; })
 
 #else
 
-#define set_bit(bitnr,addr) ({ \
-register int __res __asm__("ax"); \
-__asm__("bt %2,%3;setb %%al":"=a" (__res):"a" (0),"r" (bitnr),"m" (*(addr))); \
-__res; })
+/*
+	BT %2, %3: 
+		Selects the bit in a bit string (specified with the first operand, called the bit base) at the bit-position 
+		designated by the bit offset (specified by the second operand) and stores the value of the bit in the CF flag.
+
+	SETB %%al:
+		Set byte if below (CF=1).
+
+	Observations:
+	- "cc" in clobber list.
+	- Keep "=a" and use "0" instead of "a" in the input list.
+*/
+
+#define set_bit(bitnr,addr) ( \
+	{ \
+		register int __res __asm__("ax"); \
+		__asm__( \
+			"bt %2,%3;setb %%al" \
+			:	"=a" (__res) \
+			:	"0" (0),"r" (bitnr),"m" (*(addr)) \
+			: "cc" \
+		); \
+		__res; 
+	} \
+)
 
 #endif
 

@@ -10,9 +10,10 @@
         "${workspaceFolder}/**",
         "${workspaceFolder}/include",
         "${workspaceFolder}/arch/**/include",
-        "${workspaceFolder}/include/uapi",
+        "${workspaceFolder}/include/sys",
+        "${workspaceFolder}/include/linux",
         "${workspaceFolder}/arch/**/include/uapi",
-        "${workspaceFolder}/include/generated",
+        "${workspaceFolder}/include/asm",
         "${workspaceFolder}/arch/**/include/generated"
       ],
       "defines": [
