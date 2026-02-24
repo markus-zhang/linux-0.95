@@ -158,10 +158,27 @@ static unsigned long copy_strings(int argc,char ** argv,unsigned long *page,
 				offset = p % PAGE_SIZE;
 				if (from_kmem==2)
 					set_fs(old_fs);
-				if (!(pag = (char *) page[p/PAGE_SIZE]) &&
-				    !(pag = (char *) page[p/PAGE_SIZE] =
-				      (unsigned long *) get_free_page())) 
-					return 0;
+
+				/** 
+				 * Cast does not yield an lvalue: 
+				 * https://stackoverflow.com/questions/26470926/c-expression-must-be-a-modifiable-lvalue
+				 * WTF is he thinking here? What is he trying to achieve?
+				 * OK ChatGPT reminded me that GCC used to have a cast as lvalue extension but deprecated later:
+				 * https://gcc.gnu.org/onlinedocs/gcc-3.4.6/gcc/Lvalues.html
+				*/
+				// if (
+				// 	!(pag = (char *) page[p/PAGE_SIZE]) &&
+				//   !(pag = (char *) page[p/PAGE_SIZE] = (unsigned long *) get_free_page())
+				// )
+				// 	return 0;
+				if (!(pag = (char *) page[p/PAGE_SIZE]))
+				{
+					page[p/PAGE_SIZE] = (unsigned long *) get_free_page();
+					pag = (char *) page[p/PAGE_SIZE];
+					if (!pag)
+						return 0;
+				}
+
 				if (from_kmem==2)
 					set_fs(new_fs);
 

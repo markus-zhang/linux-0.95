@@ -348,7 +348,7 @@ __asm__("movw %%dx,%0\n\t" \
 #else
 
 /*
-	NOTE: Similar to above, we need to be very careful about variables that go into BOTH output and input lists.
+	Similar to above, we need to be very careful about variables that go into BOTH output and input lists.
 	If the semantic does not alter the variable, but we need to put it into both input and output lists, use a temp variable.
 	We should also identify which variables should go into which list.
 	Analysis: (use the ^ original code for reference as the new code is to be changed)
@@ -358,7 +358,7 @@ __asm__("movw %%dx,%0\n\t" \
 */
 #define _set_limit(addr,limit) 										\
 do { 																							\
-	unsigned long __limit = (unisnged long) limit; 	\
+	unsigned long __limit = (unsigned long) (limit); 	\
 	__asm__( 																				\
 		"movw %%dx,%0\n\t" 														\
 		"rorl $16,%%edx\n\t" 													\
@@ -368,8 +368,10 @@ do { 																							\
 		"movb %%dl,%1" 																\
 		:	"=m" (*(unsigned short *)(addr)), 					\
 			"+m" (*(unsigned char *)((addr)+6)), 				\
-			"+d" (limit) 																\
-	:"cc", "memory"); 															\
+			"+d" (__limit) 															\
+		:																							\
+		:	"cc", "memory"															\
+	); 																							\
 } while (0)
 
 #endif

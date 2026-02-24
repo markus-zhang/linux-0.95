@@ -1097,8 +1097,43 @@ do { \
 The next file is `super.c`. I'm going to fix all inline assembly in one shot. Please check the repo for details. I'll only list the more interesting ones below.
 
 ```C
-
+#define set_bit(bitnr,addr) ({ \
+register int __res __asm__("ax"); \
+__asm__("bt %2,%3;setb %%al":"=a" (__res):"a" (0),"r" (bitnr),"m" (*(addr))); \
+__res; })
 ```
+
+One quirk of this kind of multiple statement (GCC statement expression, I think this is the name.) is that I cannot wrap it with a `do...while(0)` loop, which makes me very itchy. The rest is pretty straightforward.
+
+```C
+/*
+	BT %2, %3: 
+		Selects the bit in a bit string (specified with the first operand, called the bit base) at the bit-position 
+		designated by the bit offset (specified by the second operand) and stores the value of the bit in the CF flag.
+
+	SETB %%al:
+		Set byte if below (CF=1).
+
+	Observations:
+	- I can't wrap this with do...while (0).
+	- "cc" in clobber list.
+	- SETB %%AL changes AL to 0 or 1. So EAX is both input/output. I need to assign the initial value 0 to __res.
+	- "r" is any register. "m" is memory location. They are both input.
+*/
+
+#define set_bit(bitnr,addr) ({ \
+		int __res = 0; \
+		__asm__( \
+			"bt %1,%2;setb %%al" \
+			:	"+a" (__res)	\
+			:	"r" (bitnr), "m" (*(addr)) \
+			: "cc" \
+		); \
+		__res; \
+})
+```
+
+**Some thoughts on vibe coding**:
 
 It is with a heavy heart that I learned that the author of "Ladybird Browser" managed to convert the Javascript compiler from C++ to Rush in 2 weeks, with the help of AI. It is a mix of awe and depression. 10x programmers leverages AI to achieve a great feat in only 2 weeks, and passing all tests. This is not a surprise to me, TBH, but reality hits hard still. I'm a very average programmer, a very average person, in all perspectives, and perhaps worse than then the median in many of them. The gap between an ordinary people, with a 10X whatever, is getting much larger due to the evolution of tools. No, I do not believe AI can ever replace humans completely, at least no in the near future, but the point is, we the ordinary people are getting less and less relevant. The gate of professional work, the gate from which we gain satisfaction by knowing that many are using our work, is closing. I have no ill feeling towards any 10X programmers who are leveraging the tools are enjoying this. They are much better than me. They have earned it. They deserve it. And I deserve it, too, because I have allowed myself to be mediocre. Being mediocre is a lesser evil then and now, but is a major sin in the future.
 
@@ -1111,3 +1146,38 @@ It requires a lot of patience to dig through the source code or the binary image
 AI won't help me to upskill in this way. AI reduces fruatration -- but I need more of them to train my resistance. AI makes things more ordered, and more accessible to me -- but I need to learn how to untangle the chaos. The frustration, the untanglement -- they are where the fun is. Why should I handle the fun part to AI? I'm not in this game to find employment. I'm not in this game to impress anyone. It is the pinball game in "SOul of the new machine" -- I figure out this one, and reward myself with the next one.
 
 AI does have its place, though. I need to expose myself to frustration for training -- but as muscles, the human mind cannot sustain too much of a frustration and it needs to rest. My current workflow seeks help from AI too quickly. There is little training if I resort to ChatGPT only after 1-2 hours of thinking. I decided to extend that period to 5 days. For any technical problem, I'll allow myself 5 full nights (preferably Mon-Fri) to figure it out, but will turn to ChatGPT if I fail to achieve so. I'll also use ChatGPT as a validator. I'm sure it bags more technical knowledge than me, so it doesn't hurt to have a second pair of eyes. The third usage is to write scripts in places that I have zero interests in -- for example, perhaps I need to downgrade a driver, but why should I take any interest in learning the bash commands? Instead I'll directly command ChatGPT to write one for me and be done with it. I need to focus on things that are truly important to me. Everything else, everyone else, is expendable.
+
+
+**Error 20**:
+
+This is a pretty weird one, as far as I think regarding C standard.
+
+```
+exec.c: In function 'copy_strings':
+exec.c:163: error: invalid lvalue in assignment
+
+```
+
+The original code looks pretty cursed already. There are multiple assignments in the same `if` statement. I don't get it, what's the point of using assignment in `if`? Is it really that hard to do assignment on the side and simply `if` then assigned lvalue? Oh well...
+
+
+```C
+if (
+	!(pag = (char *) page[p/PAGE_SIZE]) &&
+	!(pag = (char *) page[p/PAGE_SIZE] = (unsigned long *) get_free_page())
+)
+	return 0;
+```
+
+Anyway, the first line of the `if` statement is OK. The second line is broken. `(char *) page[p/PAGE_SIZE] = (unsigned long *) get_free_page()` doesn't make sense, because ISO C standard says that "Cast does not yield an lvalue" (https://stackoverflow.com/questions/26470926/c-expression-must-be-a-modifiable-lvalue). However, (here is the good part), ChatGPT told me that GCC used to have a "cast as lvalue" extension in the early days (https://gcc.gnu.org/onlinedocs/gcc-3.4.6/gcc/Lvalues.html) but they deprecated it before 4.1. That's why it somehow worked back in the day, but doesn't work for later GCC versions. Here is my modification:
+
+```C
+				if (!(pag = (char *) page[p/PAGE_SIZE]))
+				{
+					page[p/PAGE_SIZE] = (unsigned long *) get_free_page();
+					pag = (char *) page[p/PAGE_SIZE];
+					
+					if (!pag)
+						return 0;
+				}
+```

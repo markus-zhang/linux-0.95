@@ -39,22 +39,22 @@ __res; })
 		Set byte if below (CF=1).
 
 	Observations:
+	- I can't wrap this with do...while (0).
 	- "cc" in clobber list.
-	- Keep "=a" and use "0" instead of "a" in the input list.
+	- SETB %%AL changes AL to 0 or 1. So EAX is both input/output. I need to assign the initial value 0 to __res.
+	- "r" is any register. "m" is memory location. They are both input.
 */
 
-#define set_bit(bitnr,addr) ( \
-	{ \
-		register int __res __asm__("ax"); \
+#define set_bit(bitnr,addr) ({ \
+		int __res = 0; \
 		__asm__( \
-			"bt %2,%3;setb %%al" \
-			:	"=a" (__res) \
-			:	"0" (0),"r" (bitnr),"m" (*(addr)) \
+			"bt %1,%2;setb %%al" \
+			:	"+a" (__res)	\
+			:	"r" (bitnr), "m" (*(addr)) \
 			: "cc" \
 		); \
-		__res; 
-	} \
-)
+		__res; \
+})
 
 #endif
 
