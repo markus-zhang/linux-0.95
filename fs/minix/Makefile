@@ -3,7 +3,7 @@ AS	=as
 CC	=gcc
 LD	=ld
 CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer \
-	-nostdinc -I../../include
+	-nostdinc -std=gnu89 -m32 -I../../include
 CPP	=gcc -E -nostdinc -I../../include
 
 .c.s:
@@ -18,7 +18,7 @@ CPP	=gcc -E -nostdinc -I../../include
 OBJS=	minix_op.o bitmap.o truncate.o namei.o inode.o file_dev.o
 
 minix.o: $(OBJS)
-	$(LD) -r -o minix.o $(OBJS)
+	$(LD) -r --oformat=elf32-i386 -o minix.o $(OBJS)
 
 clean:
 	rm -f core *.o *.a tmp_make

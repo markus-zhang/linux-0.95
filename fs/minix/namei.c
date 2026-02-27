@@ -43,12 +43,42 @@ static int minix_match(int len,const char * name,struct minix_dir_entry * de)
 		return 1;
 	if (len < MINIX_NAME_LEN && de->name[len])
 		return 0;
+
+	#ifdef MARKUS_OUT
+
 	__asm__("cld\n\t"
 		"fs ; repe ; cmpsb\n\t"
 		"setz %%al"
 		:"=a" (same)
 		:"0" (0),"S" ((long) name),"D" ((long) de->name),"c" (len)
 		:"cx","di","si");
+	#else
+
+	// Observations:
+	// - Both EDI/ESI are input/output, so both require "+". They also need temp variables to make lvalues.
+	// - EAX is output, although it is initialized as 0. So it's fine to keep the combo of "=a" and "0".
+	// - ECX is input, and it gets trashed, so the best way is to use "+c" with a temp variable.
+
+	unsigned long __S = (unsigned long)name;
+	unsigned long __D = (unsigned long)(de->name);
+	unsigned long __len = len;
+
+	__asm__(
+		// Clear DF. Subsequent string instructions increment EDI/ESI
+		"cld\n\t"
+		// while (ecx--) fs:esi++ == es:edi++
+		// Since name is in user space, so Linus needs to add fs, which means fs:esi instead of ds:esi.
+		// https://blog.csdn.net/qq_31442743/article/details/130907515
+		"fs ; repe ; cmpsb\n\t"
+		// Set %%AL if ZF == 1, otherwise clears it.
+		"setz %%al"
+		:	"=a" (same), "+S" (__S), "+D" (__D), "+c" (__len)
+		:	"0" (0)
+		:	"cc", "memory"
+	);
+
+	#endif
+	
 	return same;
 }
 

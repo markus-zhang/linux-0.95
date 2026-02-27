@@ -162,10 +162,35 @@ repeat:
 	return 0;
 }
 
+#ifdef MARKUS_OUT
+
 #define copy_buffer(from,to) \
 __asm__("cld ; rep ; movsl" \
 	::"c" (BLOCK_SIZE/4),"S" ((long)(from)),"D" ((long)(to)) \
 	:"cx","di","si")
+
+#else
+
+// Observations:
+// - while (ECX--) (*EDI) = (*ESI)
+// - ECX is an input and the assembly routine trashes it, better to use "+c" with a temp var.
+// - Same for S and D.
+// - "memory" in clobber list.
+
+#define copy_buffer(from,to) \
+do { \
+	unsigned long __c = BLOCK_SIZE / 4; \
+	unsigned long __from = (unsigned long)from; \
+	unsigned long __to = (unsigned long)to; \
+	__asm__ __volatile__ ( \
+		"cld ; rep ; movsl" \
+		: "+c" (__c), "+S" (__from), "+D" (__to) \
+		:	 \
+		:	"memory" \
+	); \
+} while (0)
+
+#endif
 
 static void setup_DMA(void)
 {

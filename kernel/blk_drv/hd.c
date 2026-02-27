@@ -62,11 +62,63 @@ static struct hd_struct {
 
 static int hd_sizes[MAX_HD<<6] = {0, };
 
+#ifdef MARKUS_OUT
+
 #define port_read(port,buf,nr) \
 __asm__("cld;rep;insw"::"d" (port),"D" (buf),"c" (nr):"cx","di")
 
+#else
+
+// Observations:
+// - DX is input only. It is fine to leave it as "d" in the input list.
+// - EDI is input/output. It requires "+" and a temp variable.
+// - ECX is input/output. It requires "+" and a temp variable.
+// - "cc" and "memory" in clobber list.
+
+#define port_read(port,buf,nr) \
+do { \
+	char *__buf = (char *)buf; \
+	unsigned long __nr = nr; \
+	__asm__( \
+		/* INSW: Input word from I/O port specified in DX into memory location specified in ES:(E)DI or RDI. */ \
+		"cld;rep;insw" \
+		: "+D" (__buf), "+c" (__nr) \
+		:	"d" (port) \
+		:	"cc","memory" \
+	); \
+} while (0)
+
+#endif
+
+
+#ifdef MARKUS_OUT
+
 #define port_write(port,buf,nr) \
 __asm__("cld;rep;outsw"::"d" (port),"S" (buf),"c" (nr):"cx","si")
+
+#else
+
+// Observations:
+// - OUTSW: Output word from memory location specified in DS:(E)SI or RSI to I/O port specified in DX
+// - So we need DX as an input and won't change it. "d" in the input list is good for this use case.
+// - ESI is input/output, use a temp var and put up a "+".
+// - ECX is input/output, use a temp var and put up a "+".
+// - "cc" and "memory" in clobber list. I think "cc" is impacted because the routine needs to check whether ECX is 0.
+// - buf is used as a char * buffer, so __buf is char *.
+
+#define port_write(port,buf,nr) \
+do { \
+	char *__buf = buf; \
+	unsigned long __nr = nr; \
+	__asm__ __volatile__ ( \
+		"cld;rep;outsw" \
+		: "+S" (__buf), "+c" (__nr) \
+		:	"d" (port) \
+		:	"cc", "memory" \
+	); \
+} while (0)
+
+#endif
 
 extern void hd_interrupt(void);
 extern void rd_load(void);
