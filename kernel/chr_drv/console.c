@@ -239,6 +239,8 @@ static void scrup(int currcons)
 			pos += video_size_row;
 			scr_end += video_size_row;
 			if (scr_end > video_mem_end) {
+				#ifdef MARKUS_OUT
+
 				__asm__("cld\n\t"
 					"rep\n\t"
 					"movsl\n\t"
@@ -250,10 +252,49 @@ static void scrup(int currcons)
 					"D" (video_mem_start),
 					"S" (origin)
 					:"cx","di","si");
+				
+					#else
+
+					// Observations:
+					// - ECX is input and output. We need to create a temp var for it and move it to output list with "+c".
+					// - Both ESI and EDI are input/output. Since the original semantic does not alter them, use temp vars.
+					//	- It just happens that both are unsigned long.
+					// - EAX is input only. Nothing to change.
+					// - "cc" and "memory" in the clobber list as usual. Probably don't need "cc" but whatever.
+
+					unsigned long __c = (video_num_lines-1)*video_num_columns>>1;
+					unsigned long __video_mem_start = video_mem_start;
+					unsigned long __origin = origin;
+
+					__asm__ __volatile__(
+						/* Clear DF. Subsequent string instructions increment ESI/EDI. */
+						"cld\n\t"
+						/* Repeat MOVSL ECX times. Stop when ECX == 0. Decrement ECX for each repeat. */
+						/* MOVSL moves a long (32-bit in x86) from address ESI to address EDI. */
+						"rep\n\t"
+						"movsl\n\t"
+						/* Move _video_num_columns (whatever it is) to ECX. */
+						/* Note that the order of the registers have changed. */
+						"movl _video_num_columns,%0\n\t"
+						/* Repear STOSW ECX times. Stop when ECX = 0. Decrement ECX for each repeat */
+						/* STOSW stores one word (16-bit) from AX to the address at (E)DI. Increment EDI as DF is cleared. */
+						"rep\n\t"
+						"stosw"
+						:	"+c" (__c),
+							"+D" (__video_mem_start),
+							"+S" (__origin)
+						:	"a" (video_erase_char)
+						:	"cc", "memory"
+					);
+
+					#endif
 				scr_end -= origin-video_mem_start;
 				pos -= origin-video_mem_start;
 				origin = video_mem_start;
 			} else {
+
+				#ifdef MARKUS_OUT
+
 				__asm__("cld\n\t"
 					"rep\n\t"
 					"stosw"
@@ -261,9 +302,38 @@ static void scrup(int currcons)
 					"c" (video_num_columns),
 					"D" (scr_end-video_size_row)
 					:"cx","di");
+
+				#else
+
+				// Observations:
+				// - EAX: this is input only, so it is fine to leave it in the input list with a C variable.
+				// - EDI: input/output, requires a "+" and needs an lvalue.
+				// - ECX: input/output, requires a "+". The original semantic does not alter the C var, so needs a temp var.
+				// - "cc" and "memory" in clobber list. "cc" is optional.
+
+				unsigned long __D = scr_end-video_size_row;
+				unsigned long __video_num_columns = video_num_columns;
+
+				__asm__ __volatile__ (
+					/* Clear DF. Subsequent string instructions increment ESI/EDI. */
+					"cld\n\t"
+					/* Repeat STOSW ECX times. Stop when ECX == 0. Decrement ECX for each repeat. */
+					/* STOSW stores one word (16-bit) from AX to the address at (E)DI. Increment EDI as DF is cleared. */
+					"rep\n\t"
+					"stosw"
+					:	"+D" (__D),
+						"+c" (__video_num_columns)
+					:	"a" (video_erase_char)
+					:	"cc","memory"
+				);
+
+				#endif
 			}
 			set_origin(currcons);
 		} else {
+
+			#ifdef MARKUS_OUT
+
 			__asm__("cld\n\t"
 				"rep\n\t"
 				"movsl\n\t"
@@ -275,6 +345,40 @@ static void scrup(int currcons)
 				"D" (origin+video_size_row*top),
 				"S" (origin+video_size_row*(top+1))
 				:"cx","di","si");
+
+			#else
+
+			// Observations:
+			// - ECX is input/output. It also needs a temp var as an lvalue.
+			// - EAX is input only. It's fine to keep it in the input list.
+			// - Both "D" and "S" are input/output. And they need lvalues, too.
+			// - As usual, "cc" and "memory" in clobber list. "cc" is optional as GCC seems to assume cc is clobbered anyway.
+
+			unsigned long __c = (bottom-top-1)*video_num_columns>>1;
+			unsigned long __D = origin+video_size_row*top;
+			unsigned long __S = origin+video_size_row*(top+1);
+
+			__asm__ __volatile__ (
+				/* Clear DF. Subsequent string instructions increment EDI/ESI. */
+				"cld\n\t"
+				/* Repeat MOVSL ECX times. Stop when ECX == 0. Each repeat decrements ECX by 1. */
+				/* MOVSL moves a 32-bit long at address ES:(E)SI to ES:(E)DI. Increment ESI/EDI afterwards as DF is cleared. */
+				"rep\n\t"
+				"movsl\n\t"
+				/* Move a 32-bit long to ECX for the next REP instruction. */
+				"movl _video_num_columns,%%ecx\n\t"
+				/* Repeat STOSW ECX times. Stop when ECX == 0. Each repeat decrements ECX by 1. */
+				/* STOSW stores a 16-bit word from AX to address pointed to at (E)DI. Increment EDI as DF is cleared. */
+				"rep\n\t"
+				"stosw"
+				:	"+c" (__c),
+					"+D" (__D),
+					"+S" (__S)
+				:	"a" (video_erase_char)
+				:	"cc", "memory"
+			);
+
+			#endif
 		}
 	}
 	else		/* Not EGA/VGA */
@@ -901,6 +1005,8 @@ void do_keyboard_interrupt(void)
 	}
 }	
 
+#ifdef MARKUS_OUT
+
 void * memsetw(void * s,unsigned short c,int count)
 {
 __asm__("cld\n\t"
@@ -910,6 +1016,34 @@ __asm__("cld\n\t"
 	:"cx","di");
 return s;
 }
+
+#else
+
+// Observations:
+// - ECX is input/output. Needs "+" and a temp var.
+// - Same for EDI. C variable s is not supposed to change.
+// - "cc" and "memory" in clobber list. We actually don't need "cc" because only DF is touched.
+
+void * memsetw(void * s,unsigned short c,int count)
+{
+	unsigned long __count = count;
+	void * __s = s;
+	__asm__(
+		/** Clear DF. Subsequent string instructions increment EDI/ESI. */
+		"cld\n\t"
+		/** Repeat STOSW ECX times. Stop when ECX == 0. Reduce ECX for each repeat. */
+		/** STOSW stores one word from AX into (E)DI. Increment EDI afterwards as DF is cleared. */
+		"rep\n\t"
+		"stosw"
+		:	"+D" (__s), "+c" (__count)
+		:	"a" (c)
+		:	"cc", "memory"
+	);
+
+	return s;
+}
+
+#endif
 
 /*
  *  void con_init(void);

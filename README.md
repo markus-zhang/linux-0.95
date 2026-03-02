@@ -609,9 +609,18 @@ I need to be really really careful about the analysis. Since I have worked on a 
 So in this case, we have three items, `%0` and `%1` are memory addresses, and `dx` is a register containing `limit`. We can immediately tell from the code, that `%0` is an input, while `%1` is both an input and an output, and `dx` is both an input and output. I can also tell that for memory addresses, it is OK to get written into, but it is not OK to write back to a variable such as `limit`. Finally I check the sizes -- `%0` is written into by `movw`, so it must be a 2-byte word. `%1` is written into by `movb`, so it is a 1-byte char. I also see `edx` in the code, so this must be a `long`, and looking at how `_set_limit()` is used, I can tell that it should be an `unsigned long`. Adn don't forget about the `do...while(0)` part. So the final result is:
 
 ```C
+/*
+	Similar to above, we need to be very careful about variables that go into BOTH output and input lists.
+	If the semantic does not alter the variable, but we need to put it into both input and output lists, use a temp variable.
+	We should also identify which variables should go into which list.
+	Analysis: (use the ^ original code for reference as the new code is to be changed)
+	- edx is on both sides, apparently, so we need a temp variable for limit. It is 4-byte so I chose unsigned long;
+	- %0 is output only. %1 is both input/output, but it is a memory address, not a reg, so no need for temp var;
+	- %0 is written into by movw, so it is 2-byte. %1 is read and written into dh by movb, so it is 1-byte.
+*/
 #define _set_limit(addr,limit) 										\
 do { 																							\
-	unsigned long __limit = (unisnged long) limit; 	\
+	unsigned long __limit = (unsigned long) (limit); 	\
 	__asm__( 																				\
 		"movw %%dx,%0\n\t" 														\
 		"rorl $16,%%edx\n\t" 													\
@@ -621,8 +630,10 @@ do { 																							\
 		"movb %%dl,%1" 																\
 		:	"=m" (*(unsigned short *)(addr)), 					\
 			"+m" (*(unsigned char *)((addr)+6)), 				\
-			"+d" (limit) 																\
-	:"cc", "memory"); 															\
+			"+d" (__limit) 															\
+		:																							\
+		:	"cc", "memory"															\
+	); 																							\
 } while (0)
 ```
 
@@ -1181,3 +1192,10 @@ Anyway, the first line of the `if` statement is OK. The second line is broken. `
 						return 0;
 				}
 ```
+
+**Error 21**:
+
+This is not an error, but what I learned from reading GCC 4.1 manual about "cc" in the clobber list:
+
+> If your assembler instruction can alter the condition code register, add `cc' to the list of clobbered registers. GCC on some machines represents the condition codes as a specific hardware register; `cc' serves to name this register. On other machines, the condition code is handled differently, and specifying `cc' has no effect. But it is valid no matter what the machine. 
+
