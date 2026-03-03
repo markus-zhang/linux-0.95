@@ -153,7 +153,20 @@ void *malloc(unsigned int len)
 		free_bucket_desc = bdesc->next;
 		bdesc->refcnt = 0;
 		bdesc->bucket_size = bdir->size;
+		#ifdef MARKUS_OUT
+
 		bdesc->page = bdesc->freeptr = (void *) cp = get_free_page();
+
+		#else
+
+		// (void *) cp = get_free_page();
+		// In the code ^, (void *) cp cannot be a viable lvalue because of the cast, so I need to break it.
+
+		cp = (char *) (get_free_page());
+		bdesc->page = bdesc->freeptr = (void *) cp;
+
+		#endif
+
 		if (!cp)
 			panic("Out of memory in kernel malloc()");
 		/* Set up the chain of free objects */
