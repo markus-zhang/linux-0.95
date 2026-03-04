@@ -14,6 +14,7 @@ CC	=gcc $(RAMDISK)
 # Markus: use -nostdinc to prevent using system header files, use -m32 to force 32-bit code.
 # Use -fno-builtin to prevent gcc to optimize printf to puts, which is not available.
 CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fno-builtin -std=gnu89 -nostdinc -m32 -I$(CURDIR)/include
+HOSTCFLAGS = -Wall -O2 -std=gnu89
 CPP	=cpp -nostdinc -Iinclude
 
 #
@@ -48,7 +49,7 @@ disk: Image
 	dd bs=8192 if=Image of=/dev/PS0
 
 tools/build: tools/build.c
-	$(CC) $(CFLAGS) \
+	$(CC) $(HOSTCFLAGS) \
 	-o tools/build tools/build.c
 
 boot/head.o: boot/head.s

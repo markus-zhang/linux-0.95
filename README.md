@@ -1199,3 +1199,52 @@ This is not an error, but what I learned from reading GCC 4.1 manual about "cc" 
 
 > If your assembler instruction can alter the condition code register, add `cc' to the list of clobbered registers. GCC on some machines represents the condition codes as a specific hardware register; `cc' serves to name this register. On other machines, the condition code is handled differently, and specifying `cc' has no effect. But it is valid no matter what the machine. 
 
+However, DF is a control flag, not a conditional code (like ZF), so `cld` does clear DF, but we don't need "cc" in the clobber list just for that.
+
+In fact, I also learned from somewhere that "cc" is pretty much implicitly added by GCC in later versions -- couldn't find a source for that though.
+
+
+**Error 22**:
+
+In the time Linus built Linux 0.95, if the assembly `.S` file wants to reference an external function/variable defined in a `.C` file, it needs to add an underscore as prefix. For example, `stack_start` should become `_stack_start`. The problem is, this stops working in GCC 4.1. So the next step is to remove ALL such prefix in the assembly programs. My recommendation is that you DO NOT find/replace, but instead run `make AS='gcc -m32' LD='ld -m elf_i386'` first. I noticed a lot of lines saying something like the following during the linker phase:
+
+```
+kernel/kernel.o:(.data+0x2c): undefined reference to `sys_execve'
+kernel/chr_drv/chr_drv.a(keyboard.o): In function `keyboard_interrupt':
+keyboard.S:(.text+0x53): undefined reference to `_do_keyboard_interrupt'
+kernel/chr_drv/chr_drv.a(keyboard.o): In function `put_queue':
+keyboard.S:(.text+0x6d): undefined reference to `_table_list'
+kernel/chr_drv/chr_drv.a(keyboard.o): In function `scroll':
+keyboard.S:(.text+0x14d): undefined reference to `_show_mem'
+keyboard.S:(.text+0x154): undefined reference to `_show_state'
+kernel/chr_drv/chr_drv.a(keyboard.o): In function `alt_func':
+keyboard.S:(.text+0x265): undefined reference to `_change_console'
+kernel/chr_drv/chr_drv.a(keyboard.o): In function `cursor':
+keyboard.S:(.text+0x1a7): undefined reference to `_ctrl_alt_del'
+```
+
+And then I would go into the assembly programs, search for say `_do_keyboard_interrupt`. Before removing the prefix `_`, I also ran the following bash command `grep -RIn --include='*.c' --include='*.h' --include='*.s'  'do_keyboard_interrupt'` -- note that I removed the prefix `_` from the search string. I'd confirm that `do_keyboard_interrupt` actually exists in some `.C` file, and then replace in the assembly language source code.
+
+This is simple yet gruesome work. It took me quite some time to get everything correct.
+
+
+**Error 23**:
+
+`build.c` is a bit different. It is a host program that stitches together an image, so the include files it uses are a bit confusing. Eventually, I figured out that only `linux/fs.h` is from the Linux 0.95 kernel source code, while the other included header files are from the host system -- in my case the docker image. 
+
+The easy solution is to create a separate `HOSTCFLAGS` in the Makefile just for `build.c`:
+
+```Makefile
+HOSTCFLAGS = -Wall -O2 -std=gnu89
+# and then use it for build.c
+tools/build: tools/build.c
+	$(CC) $(HOSTCFLAGS) \
+	-o tools/build tools/build.c
+```
+
+The complication is that this would ignore `/linux/fs.h` so `MINOR` and `MAJOR` are not defined. I cheated by redefine them in `build.c` lol, as they are just simple macros:
+
+```C
+#define MAJOR(a) (((unsigned)(a))>>8)
+#define MINOR(a) ((a)&0xff)
+```

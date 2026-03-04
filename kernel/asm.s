@@ -11,16 +11,16 @@
  * the fpu must be properly saved/resored. This hasn't been tested.
  */
 
-.globl _divide_error,_debug,_nmi,_int3,_overflow,_bounds,_invalid_op
-.globl _double_fault,_coprocessor_segment_overrun
-.globl _invalid_TSS,_segment_not_present,_stack_segment
-.globl _general_protection,_coprocessor_error,_irq13,_reserved
-.globl _alignment_check
-.globl _page_fault
+.globl divide_error,debug,nmi,int3,overflow,bounds,invalid_op
+.globl double_fault,coprocessor_segment_overrun
+.globl invalid_TSS,segment_not_present,stack_segment
+.globl general_protection,coprocessor_error,irq13,reserved
+.globl alignment_check
+.globl page_fault
 
-_divide_error:
+divide_error:
 	pushl $0 		# no error code
-	pushl $_do_divide_error
+	pushl $do_divide_error
 error_code:
 	push %fs
 	push %es
@@ -61,47 +61,47 @@ error_code:
 	addl $4,%esp
 	iret
 
-_debug:
+debug:
 	pushl $0
-	pushl $_do_int3		# _do_debug
+	pushl $do_int3		# _do_debug
 	jmp error_code
 
-_nmi:
+nmi:
 	pushl $0
-	pushl $_do_nmi
+	pushl $do_nmi
 	jmp error_code
 
-_int3:
+int3:
 	pushl $0
-	pushl $_do_int3
+	pushl $do_int3
 	jmp error_code
 
-_overflow:
+overflow:
 	pushl $0
-	pushl $_do_overflow
+	pushl $do_overflow
 	jmp error_code
 
-_bounds:
+bounds:
 	pushl $0
-	pushl $_do_bounds
+	pushl $do_bounds
 	jmp error_code
 
-_invalid_op:
+invalid_op:
 	pushl $0
-	pushl $_do_invalid_op
+	pushl $do_invalid_op
 	jmp error_code
 
-_coprocessor_segment_overrun:
+coprocessor_segment_overrun:
 	pushl $0
-	pushl $_do_coprocessor_segment_overrun
+	pushl $do_coprocessor_segment_overrun
 	jmp error_code
 
-_reserved:
+reserved:
 	pushl $0
-	pushl $_do_reserved
+	pushl $do_reserved
 	jmp error_code
 
-_irq13:
+irq13:
 	pushl %eax
 	xorb %al,%al
 	outb %al,$0xF0
@@ -111,32 +111,32 @@ _irq13:
 1:	jmp 1f
 1:	outb %al,$0xA0
 	popl %eax
-	jmp _coprocessor_error
+	jmp coprocessor_error
 
-_double_fault:
-	pushl $_do_double_fault
+double_fault:
+	pushl $do_double_fault
 	jmp error_code
 
-_invalid_TSS:
-	pushl $_do_invalid_TSS
+invalid_TSS:
+	pushl $do_invalid_TSS
 	jmp error_code
 
-_segment_not_present:
-	pushl $_do_segment_not_present
+segment_not_present:
+	pushl $do_segment_not_present
 	jmp error_code
 
-_stack_segment:
-	pushl $_do_stack_segment
+stack_segment:
+	pushl $do_stack_segment
 	jmp error_code
 
-_general_protection:
-	pushl $_do_general_protection
+general_protection:
+	pushl $do_general_protection
 	jmp error_code
 
-_alignment_check:
-	pushl $_do_alignment_check
+alignment_check:
+	pushl $do_alignment_check
 	jmp error_code
 
-_page_fault:
-	pushl $_do_page_fault
+page_fault:
+	pushl $do_page_fault
 	jmp error_code

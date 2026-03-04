@@ -868,8 +868,6 @@ return __res;
 extern inline char * strpbrk(const char * cs,const char * ct)
 {
 	char * __res;
-	const char* __cs = cs;
-	const char* __ct = ct;
 	unsigned long __c = 0xFFFFFFFF;
 	unsigned int __a = 0x0;
 

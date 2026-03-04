@@ -22,12 +22,12 @@
 #define KBD_FINNISH
 
 .text
-.globl _hard_reset_now
-.globl _keyboard_interrupt
-.globl _kapplic
-.globl _kmode
-.globl _kleds
-.globl _set_leds
+.globl hard_reset_now
+.globl keyboard_interrupt
+.globl kapplic
+.globl kmode
+.globl kleds
+.globl set_leds
 
 /*
  * these are for the keyboard read functions
@@ -39,9 +39,9 @@ tail = 8
 proc_list = 12
 buf = 16
 
-_kapplic:	.byte 0
-_kmode:	.byte 0		/* caps, alt, ctrl and shift mode */
-_kleds:	.byte 2		/* num-lock, caps, scroll-lock mode (nom-lock on) */
+kapplic:	.byte 0
+kmode:	.byte 0		/* caps, alt, ctrl and shift mode */
+kleds:	.byte 2		/* num-lock, caps, scroll-lock mode (nom-lock on) */
 e0:	.byte 0
 
 /*
@@ -49,7 +49,7 @@ e0:	.byte 0
  *  keyboard scan-code and converts it into the appropriate
  *  ascii character(s).
  */
-_keyboard_interrupt:
+keyboard_interrupt:
 	cld
 	pushl %eax
 	pushl %ebx
@@ -87,7 +87,7 @@ _keyboard_interrupt:
 	je end_intr
 	sti
 	call key_table(,%eax,4)
-	call _do_keyboard_interrupt
+	call do_keyboard_interrupt
 	movl $0,%ebx
 end_intr:
 	movb %bl,e0
@@ -107,7 +107,7 @@ end_intr:
 put_queue:
 	pushl %ecx
 	pushl %edx
-	movl _table_list,%edx		# read-queue for console
+	movl table_list,%edx		# read-queue for console
 	movl head(%edx),%ecx
 1:	movb %al,buf(%edx,%ecx)
 	incl %ecx
@@ -133,7 +133,7 @@ alt:	movb $0x10,%al
 1:	cmpb $0,e0
 	je 2f
 	addb %al,%al
-2:	orb %al,_kmode
+2:	orb %al,kmode
 	ret
 unctrl:	movb $0x04,%al
 	jmp 1f
@@ -142,32 +142,32 @@ unalt:	movb $0x10,%al
 	je 2f
 	addb %al,%al
 2:	notb %al
-	andb %al,_kmode
+	andb %al,kmode
 	ret
 
 lshift:
-	orb $0x01,_kmode
+	orb $0x01,kmode
 	ret
 unlshift:
-	andb $0xfe,_kmode
+	andb $0xfe,kmode
 	ret
 rshift:
-	orb $0x02,_kmode
+	orb $0x02,kmode
 	ret
 unrshift:
-	andb $0xfd,_kmode
+	andb $0xfd,kmode
 	ret
 
 old_leds:
 	.byte 2
 
-caps:	testb $0x80,_kmode
+caps:	testb $0x80,kmode
 	jne 1f
-	xorb $4,_kleds
-	xorb $0x40,_kmode
-	orb $0x80,_kmode
-_set_leds:
-	movb _kleds,%al
+	xorb $4,kleds
+	xorb $0x40,kmode
+	orb $0x80,kmode
+set_leds:
+	movb kleds,%al
 	cmpb old_leds,%al
 	je 1f
 	movb %al,old_leds
@@ -175,21 +175,21 @@ _set_leds:
 	movb $0xed,%al		/* set leds command */
 	outb %al,$0x60
 	call kb_wait
-	movb _kleds,%al
+	movb kleds,%al
 	outb %al,$0x60
 1:	ret
-uncaps:	andb $0x7f,_kmode
+uncaps:	andb $0x7f,kmode
 	ret
 scroll:
-	testb $0x03,_kmode
+	testb $0x03,kmode
 	je 1f
-	call _show_mem
+	call show_mem
 	jmp 2f
-1:	call _show_state
-2:	xorb $1,_kleds
-	jmp _set_leds
+1:	call show_state
+2:	xorb $1,kleds
+	jmp set_leds
 	
-num:	cmpb $0x01,_kapplic
+num:	cmpb $0x01,kapplic
 	jne notappl
 	movw $0x0050,%ax
 applkey:
@@ -199,8 +199,8 @@ applkey:
 	jmp put_queue
  
 notappl:
-	xorb $2,_kleds
-	jmp _set_leds
+	xorb $2,kleds
+	jmp set_leds
 
 /*
  *  cursor-key/numeric keypad cursor keys are handled here.
@@ -212,20 +212,20 @@ cursor:
 	cmpb $12,%al
 	ja 1f
 	jne cur2		/* check for ctrl-alt-del */
-	testb $0x0c,_kmode
+	testb $0x0c,kmode
 	je cur2
-	testb $0x30,_kmode
-	jne _ctrl_alt_del
+	testb $0x30,kmode
+	jne ctrl_alt_del
 cur2:	cmpb $0x01,e0		/* e0 forces cursor movement */
 	je cur
-	testb $0x03,_kmode	/* shift forces cursor */
+	testb $0x03,kmode	/* shift forces cursor */
 	jne cur
-	cmpb $0x01,_kapplic
+	cmpb $0x01,kapplic
 	jne notcappl
 	movb appl_table(%eax),%al
 	jmp applkey
 notcappl:
-	testb $0x02,_kleds	/* not num-lock forces cursor */
+	testb $0x02,kleds	/* not num-lock forces cursor */
 	je cur
 	xorl %ebx,%ebx
 	movb num_table(%eax),%al
@@ -242,7 +242,7 @@ cur:	movb cur_table(%eax),%al
 ok_cur:	shll $16,%eax
 	movw $0x5b1b,%ax
 	xorl %ebx,%ebx
-	cmpb $0x01,_kapplic
+	cmpb $0x01,kapplic
 	jne put_queue
 	movb $0x4f,%ah
 	jmp put_queue
@@ -293,7 +293,7 @@ func:
 	cmpb $11,%al
 	ja end_func
 ok_func:
-	testb $0x10,_kmode
+	testb $0x10,kmode
 	jne alt_func
 	cmpl $4,%ecx		/* check that there is enough room */
 	jl end_func
@@ -302,7 +302,7 @@ ok_func:
 	jmp put_queue
 alt_func:
 	pushl %eax
-	call _change_console
+	call change_console
 	popl %eax
 end_func:
 	ret
@@ -623,30 +623,30 @@ alt_map:
  */
 do_self:
 	lea alt_map,%ebx
-	testb $0x20,_kmode		/* alt-gr */
+	testb $0x20,kmode		/* alt-gr */
 	jne 1f
 	lea shift_map,%ebx
-	testb $0x03,_kmode
+	testb $0x03,kmode
 	jne 1f
 	lea key_map,%ebx
 1:	movb (%ebx,%eax),%al
 	orb %al,%al
 	je none
-	testb $0x4c,_kmode		/* ctrl or caps */
+	testb $0x4c,kmode		/* ctrl or caps */
 	je 2f
 	cmpb $'a,%al
 	jb 2f
 	cmpb $'},%al
 	ja 2f
 	subb $32,%al
-2:	testb $0x0c,_kmode		/* ctrl */
+2:	testb $0x0c,kmode		/* ctrl */
 	je 3f
 	cmpb $64,%al
 	jb 3f
 	cmpb $64+32,%al
 	jae 3f
 	subb $64,%al
-3:	testb $0x10,_kmode		/* left alt */
+3:	testb $0x10,kmode		/* left alt */
 	je 4f
 	orb $0x80,%al
 4:	andl $0xff,%eax
@@ -661,7 +661,7 @@ none:	ret
  */
 slash:	cmpb $1,e0
 	jne do_self
-	cmpb $1,_kapplic
+	cmpb $1,kapplic
 	jne notmapplic
 	movw $'Q,%ax
 	jmp applkey
@@ -671,7 +671,7 @@ notmapplic:
 	xorl %ebx,%ebx
 	jmp put_queue
 
-star:	cmpb $1,_kapplic
+star:	cmpb $1,kapplic
 	jne do_self
 	movw $'R,%ax
 	jmp applkey
@@ -683,17 +683,17 @@ notsapplic:
 
 enter:	cmpb $1,e0
 	jne do_self
-	cmpb $1,_kapplic
+	cmpb $1,kapplic
 	jne do_self
 	movw $'M,%ax
 	jmp applkey
 	
-minus:	cmpb $1,_kapplic
+minus:	cmpb $1,kapplic
 	jne do_self
 	movw $'S,%ax
 	jmp applkey
 	
-plus:	cmpb $1,_kapplic
+plus:	cmpb $1,kapplic
 	jne do_self
 	movw $'l,%ax
 	jmp applkey
@@ -792,7 +792,7 @@ no_idt:
  * controller to pulse the reset-line low. We try that for a while,
  * and if it doesn't work, we do some other stupid things.
  */
-_hard_reset_now:
+hard_reset_now:
 	sti
 	movl $100,%ebx
 1:	call kb_wait
@@ -802,4 +802,4 @@ _hard_reset_now:
 	decl %ebx
 	jne 1b
 	lidt no_idt		/* zero-length idt: should triple-fault */
-	jmp _hard_reset_now
+	jmp hard_reset_now

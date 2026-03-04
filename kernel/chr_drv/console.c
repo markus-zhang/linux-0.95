@@ -244,7 +244,7 @@ static void scrup(int currcons)
 				__asm__("cld\n\t"
 					"rep\n\t"
 					"movsl\n\t"
-					"movl _video_num_columns,%1\n\t"
+					"movl video_num_columns,%1\n\t"
 					"rep\n\t"
 					"stosw"
 					::"a" (video_erase_char),
@@ -273,9 +273,9 @@ static void scrup(int currcons)
 						/* MOVSL moves a long (32-bit in x86) from address ESI to address EDI. */
 						"rep\n\t"
 						"movsl\n\t"
-						/* Move _video_num_columns (whatever it is) to ECX. */
+						/* Move video_num_columns (whatever it is) to ECX. */
 						/* Note that the order of the registers have changed. */
-						"movl _video_num_columns,%0\n\t"
+						"movl video_num_columns,%0\n\t"
 						/* Repear STOSW ECX times. Stop when ECX = 0. Decrement ECX for each repeat */
 						/* STOSW stores one word (16-bit) from AX to the address at (E)DI. Increment EDI as DF is cleared. */
 						"rep\n\t"
@@ -337,7 +337,7 @@ static void scrup(int currcons)
 			__asm__("cld\n\t"
 				"rep\n\t"
 				"movsl\n\t"
-				"movl _video_num_columns,%%ecx\n\t"
+				"movl video_num_columns,%%ecx\n\t"
 				"rep\n\t"
 				"stosw"
 				::"a" (video_erase_char),
@@ -366,7 +366,7 @@ static void scrup(int currcons)
 				"rep\n\t"
 				"movsl\n\t"
 				/* Move a 32-bit long to ECX for the next REP instruction. */
-				"movl _video_num_columns,%%ecx\n\t"
+				"movl video_num_columns,%%ecx\n\t"
 				/* Repeat STOSW ECX times. Stop when ECX == 0. Each repeat decrements ECX by 1. */
 				/* STOSW stores a 16-bit word from AX to address pointed to at (E)DI. Increment EDI as DF is cleared. */
 				"rep\n\t"
@@ -388,7 +388,7 @@ static void scrup(int currcons)
 		__asm__("cld\n\t"
 			"rep\n\t"
 			"movsl\n\t"
-			"movl _video_num_columns,%%ecx\n\t"
+			"movl video_num_columns,%%ecx\n\t"
 			"rep\n\t"
 			"stosw"
 			::"a" (video_erase_char),
@@ -417,7 +417,7 @@ static void scrup(int currcons)
 			"rep\n\t"
 			"movsl\n\t"
 			/* Move long value into ECX. */
-			"movl _video_num_columns,%%ecx\n\t"
+			"movl video_num_columns,%%ecx\n\t"
 			/* Repeat STOSW ECX times. Stop when ECX == 0. Decrement ECX every repeat. */
 			/* STOSW stores a word (16-bit) from AX into the address at (E)DI. Increment EDI afterwards. */
 			"rep\n\t"
@@ -464,7 +464,7 @@ static void scrdown(int currcons)
 		"rep\n\t"
 		"movsl\n\t"
 		"addl $2,%%edi\n\t"	/* %edi has been decremented by 4 */
-		"movl _video_num_columns,%%ecx\n\t"
+		"movl video_num_columns,%%ecx\n\t"
 		"rep\n\t"
 		"stosw\n\t"
 		"cld"
@@ -495,7 +495,7 @@ static void scrdown(int currcons)
 		"movsl\n\t"
 		/* Add 2 to EDI. */
 		"addl $2,%%edi\n\t"	/* %edi has been decremented by 4 */
-		"movl _video_num_columns,%%ecx\n\t"
+		"movl video_num_columns,%%ecx\n\t"
 		/* Repeat STOSW ECX times. Stop when ECX == 0. Decrement ECX every repeat. */
 		/* STOSW stores a word (16-bit) from AX into the address at (E)DI. Decrement EDI afterwards. */
 		"rep\n\t"

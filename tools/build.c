@@ -25,7 +25,7 @@
 #include <stdlib.h>	/* contains exit */
 #include <sys/types.h>	/* unistd.h needs this */
 #include <sys/stat.h>
-#include <linux/fs.h>
+// #include <linux/fs.h>
 #include <unistd.h>	/* contains read/write */
 #include <fcntl.h>
 
@@ -36,6 +36,9 @@
 
 #define DEFAULT_MAJOR_ROOT 0
 #define DEFAULT_MINOR_ROOT 0
+
+#define MAJOR(a) (((unsigned)(a))>>8)
+#define MINOR(a) ((a)&0xff)
 
 /* max nr of sectors of setup: don't change unless you also change
  * bootsect etc */
