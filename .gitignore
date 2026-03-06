@@ -7,3 +7,4 @@
 bootsect.s
 setup.s
 keyboard.s
+*.elf

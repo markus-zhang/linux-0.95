@@ -12,7 +12,7 @@
  * the page directory.
  */
 .text
-.globl idt,gdt,pg_dir,tmp_floppy_area,floppy_track_buffer
+.globl idt,gdt,pg_dir,tmp_floppy_area,floppy_track_buffer,startup_32
 pg_dir:
 startup_32:
 	cld

@@ -3,6 +3,24 @@
   "C_Cpp.navigationEngine": "default",
   "C_Cpp.errorSquiggles": "enabled",
   "files.associations": {
-    "*.h": "c"
+    "*.h": "c",
+    "array": "c",
+    "*.tcc": "c",
+    "chrono": "c",
+    "cmath": "c",
+    "deque": "c",
+    "string": "c",
+    "unordered_map": "c",
+    "vector": "c",
+    "exception": "c",
+    "functional": "c",
+    "string_view": "c",
+    "memory": "c",
+    "random": "c",
+    "initializer_list": "c",
+    "numeric": "c",
+    "ostream": "c",
+    "streambuf": "c",
+    "system_error": "c"
   }
 }

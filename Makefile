@@ -3,18 +3,21 @@
 # size in blocks.
 #
 #RAMDISK = -DRAMDISK=512
+#RAMDISK = -DRAMDISK=2048
 
 AS86	=as86 -0 -a
 LD86	=ld86 -0
 
 AS	=as
 LD	=ld
-LDFLAGS	=-s -x -M
+# LDFLAGS	=-s -x -M
+LDFLAGS	= -m elf_i386 -Ttext 0 -e startup_32 -s -x -M
+OBJCOPY = objcopy
 CC	=gcc $(RAMDISK)
 # Markus: use -nostdinc to prevent using system header files, use -m32 to force 32-bit code.
 # Use -fno-builtin to prevent gcc to optimize printf to puts, which is not available.
 CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fno-builtin -std=gnu89 -nostdinc -m32 -I$(CURDIR)/include
-HOSTCFLAGS = -Wall -O2 -std=gnu89
+HOSTCFLAGS = -Wall -O2 -std=gnu89 
 CPP	=cpp -nostdinc -Iinclude
 
 #
@@ -23,6 +26,7 @@ CPP	=cpp -nostdinc -Iinclude
 # default of FLOPPY is used by 'build'.
 #
 ROOT_DEV=/dev/hdb1
+# ROOT_DEV=FLOPPY
 
 ARCHIVES	=kernel/kernel.o mm/mm.o fs/fs.o
 FILESYSTEMS	=fs/minix/minix.o
@@ -54,6 +58,16 @@ tools/build: tools/build.c
 
 boot/head.o: boot/head.s
 
+# tools/system:	boot/head.o init/main.o \
+# 		$(ARCHIVES) $(FILESYSTEMS) $(DRIVERS) $(MATH) $(LIBS)
+# 	$(LD) $(LDFLAGS) boot/head.o init/main.o \
+# 	$(ARCHIVES) \
+# 	$(FILESYSTEMS) \
+# 	$(DRIVERS) \
+# 	$(MATH) \
+# 	$(LIBS) \
+# 	-o tools/system > System.map
+
 tools/system:	boot/head.o init/main.o \
 		$(ARCHIVES) $(FILESYSTEMS) $(DRIVERS) $(MATH) $(LIBS)
 	$(LD) $(LDFLAGS) boot/head.o init/main.o \
@@ -62,7 +76,8 @@ tools/system:	boot/head.o init/main.o \
 	$(DRIVERS) \
 	$(MATH) \
 	$(LIBS) \
-	-o tools/system > System.map
+	-o tools/system.elf > System.map
+	$(OBJCOPY) -O binary tools/system.elf tools/system
 
 kernel/math/math.a:
 	(cd kernel/math; make)
@@ -105,7 +120,7 @@ boot/bootsect:	boot/bootsect.s
 clean:
 	rm -f Image System.map tmp_make core boot/bootsect boot/setup \
 		boot/bootsect.s boot/setup.s init/main.s
-	rm -f init/*.o tools/system tools/build boot/*.o
+	rm -f init/*.o tools/system tools/system.elf tools/build boot/*.o
 	(cd mm;make clean)
 	(cd fs;make clean)
 	(cd kernel;make clean)

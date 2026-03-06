@@ -28,7 +28,6 @@
 // #include <linux/fs.h>
 #include <unistd.h>	/* contains read/write */
 #include <fcntl.h>
-#include <stdint.h>
 
 #define MINIX_HEADER 32
 #define GCC_HEADER 1024
@@ -56,16 +55,6 @@ void die(char * str)
 void usage(void)
 {
 	die("Usage: build bootsect setup system [rootdev] [> image]");
-}
-
-// Markus: For 32-bit stuffs. I want to keep it in x86-64 and do not install 
-
-static uint32_t W(const void *buf, int idx)
-{
-	uint32_t v;
-	// buf is supposed to be an char array
-	memcpy(&v, (const unsigned char *)buf + idx*4, 4);
-	return v;
 }
 
 int main(int argc, char ** argv)
@@ -101,24 +90,22 @@ int main(int argc, char ** argv)
 		die("Bad root device --- major #");
 	}
 	for (i=0;i<sizeof buf; i++) buf[i]=0;
-
 	if ((id=open(argv[1],O_RDONLY,0))<0)
 		die("Unable to open 'boot'");
 	if (read(id,buf,MINIX_HEADER) != MINIX_HEADER)
 		die("Unable to read header of 'boot'");
-	if (W(buf, 0) != 0x04100301)
+	if (((long *) buf)[0]!=0x04100301)
 		die("Non-Minix header of 'boot' 0");
-	if (W(buf, 1) != MINIX_HEADER)
+	if (((long *) buf)[1]!=MINIX_HEADER)
 		die("Non-Minix header of 'boot' 1");
-	if (W(buf, 3) != 0)
+	if (((long *) buf)[3]!=0)
 		die("Illegal data segment in 'boot'");
-	if (W(buf, 4) != 0)
+	if (((long *) buf)[4]!=0)
 		die("Illegal bss in 'boot'");
-	if (W(buf, 5) !=  0)
+	if (((long *) buf)[5] != 0)
 		die("Non-Minix header of 'boot' 5");
-	if (W(buf, 7) !=  0)
+	if (((long *) buf)[7] != 0)
 		die("Illegal symbol table in 'boot'");
-
 	i=read(id,buf,sizeof buf);
 	fprintf(stderr,"Boot sector %d bytes.\n",i);
 	if (i != 512)
@@ -136,17 +123,26 @@ int main(int argc, char ** argv)
 		die("Unable to open 'setup'");
 	if (read(id,buf,MINIX_HEADER) != MINIX_HEADER)
 		die("Unable to read header of 'setup'");
-	if (W(buf, 0) != 0x04100301)
+	if (((long *) buf)[0]!=0x04100301)
+	{
+		printf("Setup 0\n");
 		die("Non-Minix header of 'setup'");
-	if (W(buf, 1) != MINIX_HEADER)	
+	}
+	if (((long *) buf)[1]!=MINIX_HEADER)
+	{
+		printf("Setup 1\n");		
 		die("Non-Minix header of 'setup'");
-	if (W(buf, 3) != 0)
+	}
+	if (((long *) buf)[3]!=0)
 		die("Illegal data segment in 'setup'");
-	if (W(buf, 4) != 0)
+	if (((long *) buf)[4]!=0)
 		die("Illegal bss in 'setup'");
-	if (W(buf, 5) != 0)
+	if (((long *) buf)[5] != 0)
+	{
+		printf("Setup 5\n");
 		die("Non-Minix header of 'setup'");
-	if (W(buf, 7) != 0)
+	}
+	if (((long *) buf)[7] != 0)
 		die("Illegal symbol table in 'setup'");
 	for (i=0 ; (c=read(id,buf,sizeof buf))>0 ; i+=c )
 		if (write(1,buf,c)!=c)
@@ -169,41 +165,16 @@ int main(int argc, char ** argv)
 	
 	if ((id=open(argv[3],O_RDONLY,0))<0)
 		die("Unable to open 'system'");
-
-	#ifdef MARKUS_OUT
-
-	// Commented out as the original code read 1,024 bytes, and then write the rest.
-	// This is good for a.out format, which was intended to.
-	// But I have trouble installing the a.out toolchain so decided to use ELF 386 instead.
-	// Check Makefile for my changes. I commented out some lines there and added my own.
-
 	if (read(id,buf,GCC_HEADER) != GCC_HEADER)
 		die("Unable to read header of 'system'");
-	if (W(buf, 5) != 0)
+	if (((long *) buf)[5] != 0)
 		die("Non-GCC header of 'system'");
 	for (i=0 ; (c=read(id,buf,sizeof buf))>0 ; i+=c )
 		if (write(1,buf,c)!=c)
 			die("Write call failed");
-
-	#else
-
-	// Instead I directly copy the flat file, which is created by objcopy.
-	// There is no header to strip off.
-
-	for (i=0 ; (c=read(id,buf,sizeof buf))>0 ; i+=c )
-		if (write(1,buf,c)!=c)
-			die("Write call failed");
-
-	if (c < 0)
-		die("Read call failed");
-
-	#endif
-
 	close(id);
 	fprintf(stderr,"System is %d bytes.\n",i);
 	if (i > SYS_SIZE*16)
 		die("System is too big");
-
-	fprintf(stderr,"build all done!\n");
 	return(0);
 }

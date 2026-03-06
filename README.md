@@ -1232,10 +1232,10 @@ This is simple yet gruesome work. It took me quite some time to get everything c
 
 `build.c` is a bit different. It is a host program that stitches together an image, so the include files it uses are a bit confusing. Eventually, I figured out that only `linux/fs.h` is from the Linux 0.95 kernel source code, while the other included header files are from the host system -- in my case the docker image. 
 
-The easy solution is to create a separate `HOSTCFLAGS` in the Makefile just for `build.c`:
+The easy solution is to create a separate `HOSTCFLAGS` in the Makefile just for `build.c`. Note that `-m32` is a MUST for `build.c`, otherwise it will be compiled as a 64-bit program and messes up everything. For example, it will mess up the check for MINIX magic number because it reads a `long` as 64-bit instead of 32-bit.
 
 ```Makefile
-HOSTCFLAGS = -Wall -O2 -std=gnu89
+HOSTCFLAGS = -Wall -O2 -std=gnu89 -m32
 # and then use it for build.c
 tools/build: tools/build.c
 	$(CC) $(HOSTCFLAGS) \
@@ -1248,3 +1248,120 @@ The complication is that this would ignore `/linux/fs.h` so `MINOR` and `MAJOR` 
 #define MAJOR(a) (((unsigned)(a))>>8)
 #define MINOR(a) ((a)&0xff)
 ```
+
+
+**Error 24**:
+
+Same `build.c` but a different issue. I'm missing `/dev/hdb1` which is required by the build process. TBH I'm not really good with Linux cli, and I never had the need to create devices, so I need to learn how to do this. OK eventually I found the solution: **In the docker,** create MAJOR and MINOR for `/dev/hdb` and `/dev/hdb1`:
+
+```bash
+mknod -m 660 /dev/hdb b 3 64
+mknod -m 660 /dev/hdb1 b 3 65
+```
+
+The numbers are taken from the kernel doc website: https://www.kernel.org/doc/html/v5.9/ide/ide.html
+
+
+**Error 25**:
+
+Again, in `build.c` (why is compiling software so difficult?), another error message:
+
+```
+/usr/bin/ld: cannot find -lgcc_s
+```
+
+I looked into it a bit, and looks like it has something to do with not recognizing libgcc: https://askubuntu.com/questions/346377/cannot-find-lgcc-s
+
+I asked ChatGPT and it offered a thoery: the docker image doesn't have 32-bit libgcc installed. OK that was a bit of surprise for me. I thought that GCC and libgcc are bundled together -- and since gcc can compile 32-bit programs, as already shown for the whole Linux 0.95 kernel, the linker should be able to find 32-bit libgcc easily. Well apparently this is not the case. I ran the following commands:
+
+```bash
+p=$(gcc -m32 -print-file-name=libgcc_s.so); echo "$p"; ls -l "$p"; file "$p"
+# /usr/lib/gcc/x86_64-linux-gnu/4.1.2/libgcc_s.so
+# lrwxrwxrwx 1 root root 18 Feb  8 22:36 /usr/lib/gcc/x86_64-linux-gnu/4.1.2/libgcc_s.so -> /lib/libgcc_s.so.1
+# /usr/lib/gcc/x86_64-linux-gnu/4.1.2/libgcc_s.so: symbolic link to `/lib/libgcc_s.so.1'
+
+printf 'int main(void){return 0;}\n' | gcc -m32 -x c - -v -o /tmp/t
+
+# Using built-in specs.
+# Target: x86_64-linux-gnu
+# Configured with: ../src/configure -v --enable-languages=c,c++,fortran,objc,obj-c++,treelang --prefix=/usr --enable-shared --with-system-zlib --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --enable-nls --program-suffix=-4.1 --enable-__cxa_atexit --enable-clocale=gnu --enable-libstdcxx-debug --enable-mpfr --enable-checking=release x86_64-linux-gnu
+# Thread model: posix
+# gcc version 4.1.2 20061115 (prerelease) (Debian 4.1.1-21)
+#  /usr/lib/gcc/x86_64-linux-gnu/4.1.2/cc1 -quiet -v -imultilib 32 - -quiet -dumpbase - -m32 -mtune=k8 -auxbase - -version -o /tmp/ccHRCuKW.s
+# ignoring nonexistent directory "/usr/local/include/i486-linux-gnu"
+# ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/4.1.2/../../../../x86_64-linux-gnu/include"
+# ignoring nonexistent directory "/usr/include/i486-linux-gnu"
+# #include "..." search starts here:
+# #include <...> search starts here:
+#  /usr/local/include
+#  /usr/lib/gcc/x86_64-linux-gnu/4.1.2/include
+#  /usr/include
+# End of search list.
+# GNU C version 4.1.2 20061115 (prerelease) (Debian 4.1.1-21) (x86_64-linux-gnu)
+# 	compiled by GNU C version 4.1.2 20061115 (prerelease) (Debian 4.1.1-21).
+# GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+# Compiler executable checksum: 0907c2444d7f564600fdf68452ce9f76
+#  as -V -Qy --32 -o /tmp/ccCXLRGI.o /tmp/ccHRCuKW.s
+# GNU assembler version 2.17 (x86_64-linux-gnu) using BFD version 2.17 Debian GNU/Linux
+#  /usr/lib/gcc/x86_64-linux-gnu/4.1.2/collect2 --eh-frame-hdr -m elf_i386 -dynamic-linker /lib/ld-linux.so.2 -o /tmp/t /usr/lib/gcc/x86_64-linux-gnu/4.1.2/../../../crt1.o /usr/lib/gcc/x86_64-linux-gnu/4.1.2/../../../crti.o /usr/lib/gcc/x86_64-linux-gnu/4.1.2/32/crtbegin.o -L/usr/lib/gcc/x86_64-linux-gnu/4.1.2/32 -L/usr/lib/gcc/x86_64-linux-gnu/4.1.2/32 -L/usr/lib/gcc/x86_64-linux-gnu/4.1.2/../../.. /tmp/ccCXLRGI.o -lgcc --as-needed -lgcc_s --no-as-needed -lc -lgcc --as-needed -lgcc_s --no-as-needed /usr/lib/gcc/x86_64-linux-gnu/4.1.2/32/crtend.o /usr/lib/gcc/x86_64-linux-gnu/4.1.2/../../../crtn.o
+# /usr/bin/ld: cannot find -lgcc_s
+# collect2: ld returned 1 exit status
+
+```
+
+Basically the two commands show:
+
+- GCC *can* compile into 32-bit execution file.
+- But I don't have the 32-bit libgcc library.
+
+I discussed with ChatGPT and agreed with it that actually `build.c` as an external tool, doesn't have to be 32-bit. It can stay as 64-bit **as long as for each `(long *)` we actually fetch 4 bytes instead of 8 bytes as in 64-bit**.
+
+The solution is to make sure that happens. Add the following C code in `build.c`:
+
+```C
+// Use memset to make sure that we grab a 4-byte uint32_t
+#include <stdint.h>
+
+static uint32_t W(const void *buf, int idx)
+{
+	uint32_t v;
+	// buf is supposed to be an char array
+	memcpy(&v, (const unsigned char *)buf + idx*4, 4);
+	return v;
+}
+
+// And then we use W(bug, n) for each ((long *) buf)[n]
+// if (((long *) buf)[5] != 0)
+//		die("Non-GCC header of 'system'");
+// The above becomes:
+
+if (W(buf, 5) != 0)
+	die("Non-GCC header of 'system'");
+
+```
+
+
+**Error 26**:
+
+I managed to run `build.c` towards the end after the previous fix. However, it complains that "Non-GCC header of 'system'". So apparently `W(buf, 5)` should be 0 but it is not. If I opened the `system` file in Hex editor, it shows the following header pattern:
+
+```
+7f 45 4c 46 01 01 01 00
+.  E  L  F  .  .  .  .
+```
+
+So this is an ELF header. However, judging from Chapter 16 of this document: https://download.oldlinux.org/CLK-5.0-WithCover.pdf, `system` should be `a.out` format, not ELF. So something must went wrong during the compiling process. My hunch is that the linker is too modern for it.
+
+```Makefile
+tools/system:	boot/head.o init/main.o \
+		$(ARCHIVES) $(FILESYSTEMS) $(DRIVERS) $(MATH) $(LIBS)
+	$(LD) $(LDFLAGS) boot/head.o init/main.o \
+	$(ARCHIVES) \
+	$(FILESYSTEMS) \
+	$(DRIVERS) \
+	$(MATH) \
+	$(LIBS) \
+	-o tools/system > System.map
+```
+
+I have to admit, ChatGPT really helps me, a wimp, to do this project. It would literally take me years, if at all, to get through all ^.

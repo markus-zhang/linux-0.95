@@ -11,7 +11,7 @@
 
 AR	=ar
 AS	=as
-LD	=ld
+LD	=ld -m elf_i386
 LDFLAGS	=-s -x
 CC	=gcc
 CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer $(GCC_OPT) \
