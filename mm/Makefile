@@ -1,6 +1,7 @@
 CC	=gcc
-CFLAGS	=-O -Wall -fstrength-reduce -fomit-frame-pointer \
-	-finline-functions -nostdinc -std=gnu89 -m32 -I../include
+# CFLAGS	=-O -Wall -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -std=gnu89 -m32 -I../include
+CFLAGS	= -O0 -g -Wall -finline-functions -nostdinc -std=gnu89 -m32 -I../include
+
 AS	=as
 AR	=ar
 LD	=ld -m elf_i386

@@ -122,7 +122,10 @@ void copy_to_cooked(struct tty_struct * tty)
 {
 	unsigned char c;
 
+	printk("mark 1\n");
+
 	if (!(tty->read_q || tty->write_q || tty->secondary)) {
+		printk("tty pointer value: %ld\n", (unsigned long)tty);
 		printk("copy_to_cooked: missing queues\n\r");
 		return;
 	}
@@ -411,6 +414,9 @@ void tty_init(void)
 	}
 	con_init();
 	for (i = 0 ; i<NR_CONSOLES ; i++) {
+		// Debug
+		// printk("%d loop: rq-> %p, sq-> %p, wq-> %p\n", i, con_queues+0+i*3,con_queues+1+i*3,con_queues+2+i*3);
+
 		con_table[i] = (struct tty_struct) {
 		 	{ICRNL,		/* change incoming CR to NL */
 			OPOST|ONLCR,	/* change outgoing NL to CRNL */
@@ -423,9 +429,33 @@ void tty_init(void)
 			0,			/* initial stopped */
 			{video_num_lines,video_num_columns,0,0},
 			con_write,
-			con_queues+0+i*3,con_queues+1+i*3,con_queues+2+i*3
+			// con_queues+0+i*3,con_queues+1+i*3,con_queues+2+i*3
+			0, 0, 0
 		};
+
+		con_table[i].read_q = con_queues + 0 + i*3;
+		con_table[i].write_q = con_queues + 1 + i*3;
+		con_table[i].secondary = con_queues + 2 + i*3;
+
 	}
+	// Debugging
+	// printk("con_table 0: tty0 rq=%p sq=%p wq=%p\n",
+	// 	con_table[0].read_q, con_table[0].secondary, con_table[0].write_q);
+	// 	printk("con_table 1: tty0 rq=%p sq=%p wq=%p\n",
+	// 	con_table[1].read_q, con_table[1].secondary, con_table[1].write_q);
+	// printk("con_table 2: tty0 rq=%p sq=%p wq=%p\n",
+	// 	con_table[2].read_q, con_table[2].secondary, con_table[2].write_q);
+	// printk("con_table 3: tty0 rq=%p sq=%p wq=%p\n",
+	// 	con_table[3].read_q, con_table[3].secondary, con_table[3].write_q);
+	// printk("con_table 4: tty0 rq=%p sq=%p wq=%p\n",
+	// 	con_table[4].read_q, con_table[4].secondary, con_table[4].write_q);
+	// printk("con_table 5: tty0 rq=%p sq=%p wq=%p\n",
+	// 	con_table[5].read_q, con_table[5].secondary, con_table[5].write_q);
+	// printk("con_table 6: tty0 rq=%p sq=%p wq=%p\n",
+	// 	con_table[6].read_q, con_table[6].secondary, con_table[6].write_q);
+	// printk("con_table 7: tty0 rq=%p sq=%p wq=%p\n",
+	// 	con_table[7].read_q, con_table[7].secondary, con_table[7].write_q);
+
 	for (i = 0 ; i<NR_SERIALS ; i++) {
 		rs_table[i] = (struct tty_struct) {
 			{0, /* no translation */
@@ -439,9 +469,15 @@ void tty_init(void)
 			0,
 			{25,80,0,0},
 			rs_write,
-			rs_queues+0+i*3,rs_queues+1+i*3,rs_queues+2+i*3
+			// rs_queues+0+i*3,rs_queues+1+i*3,rs_queues+2+i*3
+			0, 0, 0
 		};
+
+		rs_table[i].read_q = rs_queues + 0 + i*3;
+		rs_table[i].write_q = rs_queues + 1 + i*3;
+		rs_table[i].secondary = rs_queues + 2 + i*3;
 	}
+
 	for (i = 0 ; i<NR_PTYS ; i++) {
 		mpty_table[i] = (struct tty_struct) {
 			{0, /* no translation */
@@ -455,8 +491,14 @@ void tty_init(void)
 			0,
 			{25,80,0,0},
 			mpty_write,
-			mpty_queues+0+i*3,mpty_queues+1+i*3,mpty_queues+2+i*3
+			// mpty_queues+0+i*3,mpty_queues+1+i*3,mpty_queues+2+i*3
+			0, 0, 0
 		};
+
+		mpty_table[i].read_q = mpty_queues + 0 + i*3;
+		mpty_table[i].write_q = mpty_queues + 1 + i*3;
+		mpty_table[i].secondary = mpty_queues + 2 + i*3;
+
 		spty_table[i] = (struct tty_struct) {
 			{0, /* no translation */
 			0,  /* no translation */
@@ -469,10 +511,17 @@ void tty_init(void)
 			0,
 			{25,80,0,0},
 			spty_write,
-			spty_queues+0+i*3,spty_queues+1+i*3,spty_queues+2+i*3
+			// spty_queues+0+i*3,spty_queues+1+i*3,spty_queues+2+i*3
+			0, 0, 0
 		};
+
+		spty_table[i].read_q = spty_queues + 0 + i*3;
+		spty_table[i].write_q = spty_queues + 1 + i*3;
+		spty_table[i].secondary = spty_queues + 2 + i*3;
 	}
 	rs_init();
+	// printk("NR_CONSOLES=%d tty_table=%p con_queues=%p\n",
+  //      NR_CONSOLES, tty_table, con_queues);
 	printk("%d virtual consoles\n\r",NR_CONSOLES);
 	printk("%d pty's\n\r",NR_PTYS);
 }

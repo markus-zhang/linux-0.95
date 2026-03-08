@@ -12,10 +12,13 @@
 AR	=ar
 AS	=as
 LD	=ld -m elf_i386
-LDFLAGS	=-s -x
+# LDFLAGS	=-s -x
+# Debug
+LDFLAGS	= 
 CC	=gcc
-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fno-builtin -std=gnu89 -nostdinc -m32 $(GCC_OPT) \
-	-finline-functions -nostdinc -I../include
+# CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fno-builtin -std=gnu89 -nostdinc -m32 $(GCC_OPT) -finline-functions -nostdinc -I../include
+CFLAGS	=-Wall -O0 -g -fno-builtin -std=gnu89 -nostdinc -m32 $(GCC_OPT) -finline-functions -nostdinc -I../include
+
 CPP	=gcc -E -nostdinc -I../include
 
 .c.s:

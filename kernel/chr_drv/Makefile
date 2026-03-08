@@ -14,8 +14,8 @@ AS	=as
 LD	=ld
 LDFLAGS	=-s -x
 CC	=gcc
-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer $(GCC_OPT) \
-	-finline-functions -nostdinc -std=gnu89 -m32 -I../../include
+# CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer $(GCC_OPT) -finline-functions -nostdinc -std=gnu89 -m32 -I../../include
+CFLAGS	=-Wall -O0 -g $(GCC_OPT) -finline-functions -nostdinc -std=gnu89 -m32 -I../../include
 CPP	=gcc -E -nostdinc -I../../include
 
 .c.s:

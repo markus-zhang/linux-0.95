@@ -168,15 +168,21 @@ void start_kernel(void)
 	trap_init();
 	blk_dev_init();
 	chr_dev_init();
+	extern struct tty_struct tty_table[];
 	tty_init();
+	// printk("AFTER tty_init: tty0 rq=%p sq=%p wq=%p\n",
+  //      tty_table[0].read_q, tty_table[0].secondary, tty_table[0].write_q);
 	time_init();
 	sched_init();
 	buffer_init(buffer_memory_end);
 	hd_init();
 	floppy_init();
+	// printk("AFTER floppy_init: tty0 rq=%p sq=%p wq=%p\n",
+  //      tty_table[0].read_q, tty_table[0].secondary, tty_table[0].write_q);
 	sti();
 	move_to_user_mode();
 	if (!kfork()) {		/* we count on this going ok */
+		// printk("mark 0\n");
 		init();
 	}
 /*

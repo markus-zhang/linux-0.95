@@ -11,12 +11,14 @@ LD86	=ld86 -0
 AS	=as
 LD	=ld
 # LDFLAGS	=-s -x -M
-LDFLAGS	= -m elf_i386 -Ttext 0 -e startup_32 -s -x -M
+LDFLAGS	= -m elf_i386 -Ttext 0 -e startup_32 -M # -s -x while debugging
 OBJCOPY = objcopy
 CC	=gcc $(RAMDISK)
 # Markus: use -nostdinc to prevent using system header files, use -m32 to force 32-bit code.
 # Use -fno-builtin to prevent gcc to optimize printf to puts, which is not available.
-CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fno-builtin -std=gnu89 -nostdinc -m32 -I$(CURDIR)/include
+# CFLAGS	=-Wall -O -fstrength-reduce -fomit-frame-pointer -fno-builtin -std=gnu89 -nostdinc -m32 -I$(CURDIR)/include
+CFLAGS	=-Wall -O0 -g -fno-builtin -std=gnu89 -nostdinc -m32 -I$(CURDIR)/include
+
 HOSTCFLAGS = -Wall -O2 -std=gnu89 
 CPP	=cpp -nostdinc -Iinclude
 
